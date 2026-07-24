@@ -1,0 +1,78 @@
+FROM eclipse-temurin:25-jre-alpine
+
+ARG govpay_tracciati_fullversion
+ARG govpay_tracciati_home=/opt/govpay-tracciati
+ARG govpay_tracciati_log=/var/log/govpay-tracciati
+
+LABEL maintainer="Link.it s.r.l."
+LABEL description="GovPay Tracciati (Caricamento massivo posizioni debitorie) Batch Processor"
+LABEL govpay.tracciati.version="${govpay_tracciati_fullversion}"
+USER root
+
+ENV GOVPAY_TRACCIATI_FULLVERSION=${govpay_tracciati_fullversion} \
+GOVPAY_TRACCIATI_LOGDIR=${govpay_tracciati_log} \
+GOVPAY_TRACCIATI_HOME=${govpay_tracciati_home} \
+HSQLDB_FULLVERSION=2.7.4 \
+TZ=Europe/Rome
+
+
+RUN set -eux; \
+apk update; \
+apk upgrade; \
+apk add --no-cache bash curl tar unzip netcat-openbsd tzdata; \
+rm -rf /var/cache/apk/*; \
+echo "${TZ}" > /etc/timezone; \
+addgroup -S govpay ; \
+adduser -S -G govpay govpay; \
+mkdir -p ${GOVPAY_TRACCIATI_HOME} ${GOVPAY_TRACCIATI_LOGDIR} /opt/sql /opt/jdbc-drivers; \
+chown -R govpay:govpay ${GOVPAY_TRACCIATI_HOME} ${GOVPAY_TRACCIATI_LOGDIR} /opt/sql
+
+WORKDIR ${GOVPAY_TRACCIATI_HOME}
+
+# Download Tracciati JAR from GitHub release
+RUN set -eux; \
+curl -kL -sS -q -o ${GOVPAY_TRACCIATI_HOME}/govpay-tracciati-batch.jar "https://github.com/link-it/govpay-tracciati-batch/releases/download/${GOVPAY_TRACCIATI_FULLVERSION}/govpay-tracciati-batch-${GOVPAY_TRACCIATI_FULLVERSION}.jar";  \
+ls -la ${GOVPAY_TRACCIATI_HOME}/; \
+curl -fL -o /tmp/govpay-tracciati-batch.jar "https://github.com/link-it/govpay-tracciati-batch/releases/download/${GOVPAY_TRACCIATI_FULLVERSION}/govpay-tracciati-batch-${GOVPAY_TRACCIATI_FULLVERSION}.jar"; \
+mv /tmp/govpay-tracciati-batch.jar ${GOVPAY_TRACCIATI_HOME}/govpay-tracciati-batch.jar; \
+chown govpay:govpay ${GOVPAY_TRACCIATI_HOME}/govpay-tracciati-batch.jar; \
+ls -la ${GOVPAY_TRACCIATI_HOME}/; \
+curl -kL -sS -q -o /tmp/sql.zip "https://github.com/link-it/govpay-tracciati-batch/releases/download/${GOVPAY_TRACCIATI_FULLVERSION}/sql.zip"; \
+unzip -q /tmp/sql.zip -d /opt && rm /tmp/sql.zip; \
+chown -R govpay:govpay /opt/sql; \
+curl -kL -sS -q -o /var/tmp/hsqldb-${HSQLDB_FULLVERSION}.zip https://sourceforge.net/projects/hsqldb/files/hsqldb/hsqldb_2_7/hsqldb-${HSQLDB_FULLVERSION}.zip/download; \
+unzip -q -d /opt /var/tmp/hsqldb-${HSQLDB_FULLVERSION}.zip hsqldb-${HSQLDB_FULLVERSION}/hsqldb/lib/*; \
+rm -f  /var/tmp/hsqldb-${HSQLDB_FULLVERSION}.zip
+
+# Copy entrypoint and initialization scripts
+COPY commons/entrypoint.sh commons/init_tracciati_db.sh /usr/local/bin/
+RUN chown -R govpay:0 /usr/local/bin/entrypoint.sh /usr/local/bin/init_tracciati_db.sh ${GOVPAY_TRACCIATI_HOME} ${GOVPAY_TRACCIATI_LOGDIR} /opt/hsqldb-${HSQLDB_FULLVERSION}/hsqldb /opt/sql \
+&& chmod -Rf g+rwX ${GOVPAY_TRACCIATI_HOME} ${GOVPAY_TRACCIATI_LOGDIR} /opt/hsqldb-${HSQLDB_FULLVERSION}/hsqldb/ /opt/sql/ \
+&& chmod ug=rx /usr/local/bin/entrypoint.sh /usr/local/bin/init_tracciati_db.sh 
+
+
+USER govpay
+
+ENV SPRING_BATCH_JOB_ENABLED=false \
+    GOVPAY_BATCH_MAX_RETRIES=3 \
+    GOVPAY_BATCH_PAGE_SIZE=1000 \
+    GOVPAY_BATCH_ENABLED=true \
+    GOVPAY_BATCH_THREAD_POOL_SIZE=5 \
+    GOVPAY_BATCH_HEADERS_CHUNK_SIZE=1 \
+    GOVPAY_BATCH_METADATA_CHUNK_SIZE=100 \
+    GOVPAY_BATCH_PAYMENTS_CHUNK_SIZE=50 \
+    GOVPAY_BATCH_SKIP_LIMIT=10 \
+    GOVPAY_BATCH_STALE_THRESHOLD_MINUTES=120 \
+    MANAGEMENT_ENDPOINTS_WEB_BASE_PATH=/actuator \
+    SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT=20000 \
+    SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT=10000 \
+    SPRING_DATASOURCE_HIKARI_MAX_LIFETIME=600000 \
+    SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE=2 \
+    SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=10 \
+    LOGGING_FILE_NAME=${GOVPAY_TRACCIATI_LOGDIR}/govpay-tracciati.log \
+    LOGGING_DIRECTORYPATH=${GOVPAY_TRACCIATI_LOGDIR} \
+    LOGGING_FILEPREFIX=govpay-tracciati
+
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD []
