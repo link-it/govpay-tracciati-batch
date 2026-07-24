@@ -1,0 +1,22 @@
+2026-07-24  Giuliano Pintori <pintori@link.it>
+
+	* [CI/CD]
+	Attivazione della pipeline di validazione (issue #1). Aggiunto il workflow
+	GitHub Actions .github/workflows/maven.yml con i job build (compilazione,
+	test, JaCoCo, SonarCloud, OWASP Dependency-Check, License Analysis),
+	osv-scan (Google OSV Scanner), sbom (CycloneDX json+xml), release (solo su
+	tag, con creazione della GitHub release) e docker (build/push immagine su
+	Docker Hub, solo su tag). Aggiunto il workflow .github/workflows/refresh-owasp-db.yml
+	per l'aggiornamento schedulato (cron 03:00) della cache del database NVD.
+	Aggiunti lo script di analisi licenze .github/workflows/scripts/analyze_licenses.py
+	con le relative eccezioni (license-exceptions.json) e la documentazione della
+	pipeline in .github/PIPELINE.md.
+
+	* [Build]
+	Creato il progetto Maven (pom.xml): artifactId govpay-tracciati-batch,
+	versione 1.0.0-SNAPSHOT, parent govpay-bom 2.0.1. Profili jar/war, dipendenze
+	Spring Boot Batch/Web/Data JPA/Actuator, driver JDBC (PostgreSQL, H2, Oracle,
+	MySQL, SQL Server) in scope provided, plugin JaCoCo e OWASP Dependency-Check.
+	Override di sicurezza PostgreSQL JDBC a 42.7.13 (GHSA-j92g-9f8w-j867, CVSS 8.2).
+	Aggiunta la configurazione SonarCloud (sonar-project.properties, projectKey
+	link-it_govpay-tracciati-batch).
