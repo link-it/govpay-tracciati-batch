@@ -1,5 +1,8 @@
 2026-07-24  Giuliano Pintori <pintori@link.it>
 
+	* [Build]
+	Aggiornato parent govpay-bom alla versione 2.0.3.
+
 	* [CI/CD]
 	Attivazione della pipeline di validazione (issue #1). Aggiunto il workflow
 	GitHub Actions .github/workflows/maven.yml con i job build (compilazione,
