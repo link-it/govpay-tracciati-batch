@@ -66,8 +66,6 @@ public class TrasformazioneCsvService {
 	 * @return JSON della pendenza risultante dalla trasformazione
 	 */
 	public String trasformaRigaCsv(String templateRichiestaBase64, String lineaCsv, String codDominio, String codTipoVersamento) {
-		byte[] template = decodeTemplate(templateRichiestaBase64);
-
 		Map<String, Object> model = new HashMap<>();
 		model.put("lineaCsvRichiesta", lineaCsv);
 		if (codDominio != null) {
@@ -76,18 +74,31 @@ public class TrasformazioneCsvService {
 		if (codTipoVersamento != null) {
 			model.put("idTipoVersamento", codTipoVersamento);
 		}
-		model.put("date", new Date());
-		model.put("context", new HashMap<String, Object>());
-		model.put("responseMap", new HashMap<String, Object>());
+		return applica("csvRichiesta", templateRichiestaBase64, model);
+	}
 
+	/**
+	 * Applica un template FreeMarker (Base64) al modello dato. Le variabili comuni
+	 * ({@code date}, {@code context}, {@code responseMap}) sono aggiunte se assenti.
+	 *
+	 * @param nomeTemplate      nome logico del template (per i messaggi di errore)
+	 * @param templateBase64    contenuto del template (Base64, eventualmente tra virgolette)
+	 * @param model             variabili esposte al template
+	 * @return risultato dell'elaborazione del template
+	 */
+	public String applica(String nomeTemplate, String templateBase64, Map<String, Object> model) {
+		byte[] template = decodeTemplate(templateBase64);
+		model.putIfAbsent("date", new Date());
+		model.putIfAbsent("context", new HashMap<String, Object>());
+		model.putIfAbsent("responseMap", new HashMap<String, Object>());
 		try {
-			Template freemarkerTemplate = new Template("csvRichiesta",
+			Template freemarkerTemplate = new Template(nomeTemplate,
 					new StringReader(new String(template, StandardCharsets.UTF_8)), this.configuration);
 			StringWriter writer = new StringWriter();
 			freemarkerTemplate.process(model, writer);
 			return writer.toString();
 		} catch (Exception e) {
-			throw new IllegalStateException("Errore nella trasformazione CSV->JSON della riga: " + e.getMessage(), e);
+			throw new IllegalStateException("Errore nell'applicazione del template FreeMarker [" + nomeTemplate + "]: " + e.getMessage(), e);
 		}
 	}
 
