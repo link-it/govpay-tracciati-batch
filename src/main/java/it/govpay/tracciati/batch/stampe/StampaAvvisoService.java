@@ -23,6 +23,7 @@ import java.time.LocalDateTime;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import it.govpay.tracciati.batch.dto.RisultatoStampa;
 import it.govpay.tracciati.batch.entity.Documento;
@@ -37,9 +38,8 @@ import it.govpay.tracciati.stampe.client.model.PaymentNotice;
  * il risultato nella tabella {@code stampe}. Ritorna un {@link RisultatoStampa} con le chiavi per la
  * deduplica nello ZIP. In caso di errore prosegue registrando l'esito KO (come il legacy).
  *
- * <p>Non è un bean di contesto finché il {@link DatiAvvisoResolver} (seam) non ha un'implementazione:
- * viene istanziato in fase di assemblaggio dello step di stampa.</p>
  */
+@Service
 public class StampaAvvisoService {
 
 	private static final Logger log = LoggerFactory.getLogger(StampaAvvisoService.class);
