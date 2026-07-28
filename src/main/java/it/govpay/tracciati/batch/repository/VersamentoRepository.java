@@ -19,9 +19,13 @@
  */
 package it.govpay.tracciati.batch.repository;
 
+import java.util.List;
 import java.util.Optional;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import it.govpay.tracciati.batch.entity.Versamento;
 
@@ -32,4 +36,12 @@ public interface VersamentoRepository extends JpaRepository<Versamento, Long> {
 
 	/** Posizione già presente per (applicazione, cod versamento ente): vincolo di unicità su DB. */
 	Optional<Versamento> findByIdApplicazioneAndCodVersamentoEnte(Long idApplicazione, String codVersamentoEnte);
+
+	/**
+	 * Posizioni debitorie di un tracciato per cui produrre l'avviso: quelle con numero avviso,
+	 * collegate al tracciato tramite le operazioni di caricamento ({@code operazioni.id_versamento}).
+	 */
+	@Query("SELECT v FROM Versamento v WHERE v.numeroAvviso IS NOT NULL AND v.id IN "
+			+ "(SELECT o.idVersamento FROM Operazione o WHERE o.idTracciato = :idTracciato AND o.idVersamento IS NOT NULL)")
+	List<Versamento> findVersamentiDaStampare(@Param("idTracciato") Long idTracciato, Pageable pageable);
 }
