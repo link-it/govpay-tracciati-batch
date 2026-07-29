@@ -68,7 +68,7 @@ public class CsvTracciatoItemReader implements ItemReader<RigaTracciato> {
 	}
 
 	@Override
-	public RigaTracciato read() {
+	public synchronized RigaTracciato read() {
 		if (this.righeCsv == null || this.cursor >= this.righeCsv.size()) {
 			return null;
 		}

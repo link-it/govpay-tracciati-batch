@@ -24,12 +24,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
 
 /**
- * Task executor per l'elaborazione parallela interna degli step partizionati
- * (caricamento pendenze e stampa avvisi).
- * <p>
- * In una configurazione dedicata (senza dipendenze JPA) per evitare la dipendenza
- * circolare introdotta da Spring Boot 4 tra {@code entityManagerFactoryBuilder}
- * (che richiede un {@code ObjectProvider<AsyncTaskExecutor>}) e la configurazione dei job.
+ * Task executor per l'elaborazione parallela interna degli step, con concorrenza limitata
+ * (bounded) e configurabile da properties: uno per il caricamento pendenze, uno per la stampa avvisi.
+ * <p>In una configurazione dedicata (senza dipendenze JPA) per evitare la dipendenza circolare
+ * introdotta da Spring Boot 4 tra {@code entityManagerFactoryBuilder} e la configurazione dei job.
  */
 @Configuration
 public class BatchTaskExecutorConfig {
@@ -41,9 +39,16 @@ public class BatchTaskExecutorConfig {
 	}
 
 	@Bean
-	public SimpleAsyncTaskExecutor taskExecutor() {
-		SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("tracciati-batch-");
-		executor.setConcurrencyLimit(this.batchProperties.getThreadPoolSize());
+	public SimpleAsyncTaskExecutor caricamentoTaskExecutor() {
+		SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("tracciati-caricamento-");
+		executor.setConcurrencyLimit(this.batchProperties.getCaricamentoPoolSize());
+		return executor;
+	}
+
+	@Bean
+	public SimpleAsyncTaskExecutor stampeTaskExecutor() {
+		SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("tracciati-stampe-");
+		executor.setConcurrencyLimit(this.batchProperties.getStampePoolSize());
 		return executor;
 	}
 }

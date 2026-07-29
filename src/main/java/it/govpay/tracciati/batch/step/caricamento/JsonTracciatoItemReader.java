@@ -87,7 +87,7 @@ public class JsonTracciatoItemReader implements ItemReader<RigaTracciato> {
 	}
 
 	@Override
-	public RigaTracciato read() {
+	public synchronized RigaTracciato read() {
 		if (this.cursor >= this.righe.size()) {
 			return null;
 		}

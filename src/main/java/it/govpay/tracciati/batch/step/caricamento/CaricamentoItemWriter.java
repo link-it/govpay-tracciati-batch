@@ -106,7 +106,8 @@ public class CaricamentoItemWriter implements ItemWriter<RigaTracciato> {
 		this.operazioneRepository.save(operazione);
 	}
 
-	private void aggiornaContatori(RigaTracciato riga, EsitoCaricamento esito) {
+	private synchronized void aggiornaContatori(RigaTracciato riga, EsitoCaricamento esito) {
+		// sincronizzato: in step multi-thread piu' chunk aggiornano gli stessi contatori del bean_dati
 		boolean ok = esito.getStato() == StatoOperazione.ESEGUITO_OK;
 		if (riga.getTipoOperazione() == TipoOperazione.ADD) {
 			if (ok) {

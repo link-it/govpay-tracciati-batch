@@ -19,11 +19,12 @@
  */
 package it.govpay.tracciati.batch.config;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.core.job.Job;
 import org.springframework.batch.core.job.builder.JobBuilder;
 import org.springframework.batch.core.job.parameters.RunIdIncrementer;
@@ -31,10 +32,10 @@ import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.Step;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.core.step.tasklet.Tasklet;
-import org.springframework.batch.infrastructure.item.ItemReader;
 import org.springframework.batch.infrastructure.repeat.RepeatStatus;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -53,7 +54,6 @@ import it.govpay.tracciati.batch.repository.VersamentoRepository;
 import it.govpay.tracciati.batch.service.CaricamentoService;
 import it.govpay.tracciati.batch.service.FinalizzazioneTracciatoService;
 import it.govpay.tracciati.batch.service.ProduzioneEsitoService;
-import it.govpay.tracciati.batch.service.TrasformazioneCsvService;
 import it.govpay.tracciati.batch.stampe.StampaAvvisoService;
 import it.govpay.tracciati.batch.stampe.ZipStampeBuilder;
 import it.govpay.tracciati.batch.step.caricamento.CaricamentoItemProcessor;
@@ -67,15 +67,18 @@ import tools.jackson.databind.ObjectMapper;
  * {@link ElaborazioneTracciatoContext}) attraversando le fasi con guardie di stato che ne
  * consentono anche la ripresa (COMPLETATO / IN_STAMPA):
  * <ol>
- *   <li>{@code caricamentoPendenzeStep} (chunk) — solo se stato ELABORAZIONE;</li>
+ *   <li>{@code caricamentoPendenzeStep} — caricamento in lotti paralleli, solo se stato ELABORAZIONE;</li>
  *   <li>{@code produzioneEsitoStep} — genera l'esito;</li>
  *   <li>{@code completaCaricamentoStep} — CARICAMENTO_OK/KO e transizione IN_STAMPA/COMPLETATO;</li>
- *   <li>{@code stampaAvvisiStep} — solo se IN_STAMPA e stampaAvvisi;</li>
+ *   <li>{@code stampaAvvisiStep} — produzione avvisi in lotti paralleli, solo se IN_STAMPA e stampaAvvisi;</li>
  *   <li>{@code finalizzazioneStep} — COMPLETATO al termine della stampa.</li>
  * </ol>
  *
- * <p>Nota: partizionamento interno (D5) e persistenza dello ZIP su {@code zip_stampe} (OID/BLOB)
- * sono i prossimi affinamenti; qui la stampa è un tasklet che itera i versamenti.</p>
+ * <p>Caricamento e stampa parallelizzano per lotti su pool dedicati, con dimensione lotto e pool
+ * configurabili da properties ({@code govpay.batch.caricamento.*} / {@code govpay.batch.stampe.*}),
+ * con la stessa semantica della procedura legacy.</p>
+ *
+ * <p>Nota: la persistenza dello ZIP su {@code zip_stampe} (OID/BLOB) è il prossimo affinamento.</p>
  */
 @Configuration
 public class BatchJobConfiguration {
@@ -113,15 +116,33 @@ public class BatchJobConfiguration {
 				.build();
 	}
 
-	// ── Step 1: caricamento pendenze (chunk) ────────────────────────────────
+	// ── Step 1: caricamento pendenze (tasklet con lotti paralleli) ───────────
 
 	@Bean
-	@StepScope
-	public ItemReader<RigaTracciato> caricamentoItemReader(ElaborazioneTracciatoContext context,
-			ObjectMapper objectMapper, TrasformazioneCsvService trasformazioneCsvService) {
-		if (!context.isPresente() || context.getTracciato().getStato() != StatoElaborazione.ELABORAZIONE) {
-			return () -> null; // niente da caricare (assente o ripresa in IN_STAMPA)
-		}
+	public Step caricamentoPendenzeStep(ElaborazioneTracciatoContext context, ObjectMapper objectMapper,
+			CaricamentoItemProcessor caricamentoItemProcessor, CaricamentoService caricamentoService,
+			OperazioneRepository operazioneRepository, SimpleAsyncTaskExecutor caricamentoTaskExecutor) {
+		Tasklet tasklet = (contribution, chunkContext) -> {
+			if (context.isPresente() && context.getTracciato().getStato() == StatoElaborazione.ELABORAZIONE) {
+				eseguiCaricamento(context, objectMapper, caricamentoItemProcessor, caricamentoService,
+						operazioneRepository, caricamentoTaskExecutor);
+			}
+			return RepeatStatus.FINISHED;
+		};
+		return new StepBuilder("caricamentoPendenzeStep", this.jobRepository)
+				.tasklet(tasklet, this.transactionManager).build();
+	}
+
+	/**
+	 * Caricamento delle pendenze del tracciato in lotti paralleli (dimensione lotto e pool da
+	 * properties), come i {@code CaricamentoTracciatoThread} della procedura legacy. Reader e writer
+	 * sono costruiti sul thread principale (accesso al contesto {@code @JobScope}); i lotti vengono
+	 * processati sui thread del pool usando solo componenti singleton, evitando l'accesso agli scope
+	 * job/step dai thread worker.
+	 */
+	private void eseguiCaricamento(ElaborazioneTracciatoContext context, ObjectMapper objectMapper,
+			CaricamentoItemProcessor processor, CaricamentoService caricamentoService,
+			OperazioneRepository operazioneRepository, SimpleAsyncTaskExecutor executor) {
 		Tracciato tracciato = context.getTracciato();
 		TracciatoPendenza beanDati = context.getBeanDati();
 		if (tracciato.getFormato() == FormatoTracciato.CSV) {
@@ -129,31 +150,37 @@ public class BatchJobConfiguration {
 			throw new UnsupportedOperationException(
 					"Risoluzione del template CSV di richiesta non ancora implementata (dipende dall'anagrafica dominio/tipo versamento)");
 		}
+
 		JsonTracciatoItemReader reader = new JsonTracciatoItemReader(objectMapper);
 		reader.bind(tracciato, beanDati);
-		return reader;
-	}
-
-	@Bean
-	@StepScope
-	public CaricamentoItemWriter caricamentoItemWriter(ElaborazioneTracciatoContext context,
-			CaricamentoService caricamentoService, OperazioneRepository operazioneRepository) {
 		CaricamentoItemWriter writer = new CaricamentoItemWriter(caricamentoService, operazioneRepository);
-		if (context.isPresente()) {
-			writer.bind(context.getTracciato(), context.getBeanDati());
+		writer.bind(tracciato, beanDati);
+
+		List<RigaTracciato> righe = new ArrayList<>();
+		RigaTracciato riga;
+		while ((riga = reader.read()) != null) {
+			righe.add(riga);
 		}
-		return writer;
+
+		int lotto = this.batchProperties.getCaricamentoChunkSize();
+		List<CompletableFuture<Void>> futures = new ArrayList<>();
+		for (int i = 0; i < righe.size(); i += lotto) {
+			List<RigaTracciato> sottoInsieme = List.copyOf(righe.subList(i, Math.min(i + lotto, righe.size())));
+			futures.add(CompletableFuture.runAsync(() -> elaboraLotto(processor, writer, sottoInsieme), executor));
+		}
+		CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 	}
 
-	@Bean
-	public Step caricamentoPendenzeStep(ItemReader<RigaTracciato> caricamentoItemReader,
-			CaricamentoItemProcessor caricamentoItemProcessor, CaricamentoItemWriter caricamentoItemWriter) {
-		return new StepBuilder("caricamentoPendenzeStep", this.jobRepository)
-				.<RigaTracciato, RigaTracciato>chunk(this.batchProperties.getCaricamentoChunkSize(), this.transactionManager)
-				.reader(caricamentoItemReader)
-				.processor(caricamentoItemProcessor)
-				.writer(caricamentoItemWriter)
-				.build();
+	private void elaboraLotto(CaricamentoItemProcessor processor, CaricamentoItemWriter writer, List<RigaTracciato> righe) {
+		try {
+			List<RigaTracciato> elaborate = new ArrayList<>(righe.size());
+			for (RigaTracciato riga : righe) {
+				elaborate.add(processor.process(riga));
+			}
+			writer.write(new org.springframework.batch.infrastructure.item.Chunk<>(elaborate));
+		} catch (Exception e) {
+			throw new java.util.concurrent.CompletionException(e);
+		}
 	}
 
 	// ── Step 2: produzione esito ────────────────────────────────────────────
@@ -193,11 +220,11 @@ public class BatchJobConfiguration {
 
 	@Bean
 	public Step stampaAvvisiStep(ElaborazioneTracciatoContext context, StampaAvvisoService stampaAvvisoService,
-			VersamentoRepository versamentoRepository) {
+			VersamentoRepository versamentoRepository, SimpleAsyncTaskExecutor stampeTaskExecutor) {
 		Tasklet tasklet = (contribution, chunkContext) -> {
 			if (context.isPresente() && context.getTracciato().getStato() == StatoElaborazione.IN_STAMPA
 					&& context.getBeanDati().isStampaAvvisi()) {
-				eseguiStampe(context, stampaAvvisoService, versamentoRepository);
+				eseguiStampe(context, stampaAvvisoService, versamentoRepository, stampeTaskExecutor);
 			}
 			return RepeatStatus.FINISHED;
 		};
@@ -205,25 +232,40 @@ public class BatchJobConfiguration {
 				.tasklet(tasklet, this.transactionManager).build();
 	}
 
+	/**
+	 * Produce gli avvisi in parallelo (lotti da {@code stampeChunkSize} sul pool stampe) e li aggiunge
+	 * allo ZIP in modo sequenziale (lo ZIP non è thread-safe), come nella procedura legacy.
+	 */
 	private void eseguiStampe(ElaborazioneTracciatoContext context, StampaAvvisoService stampaAvvisoService,
-			VersamentoRepository versamentoRepository) throws Exception {
+			VersamentoRepository versamentoRepository, SimpleAsyncTaskExecutor stampeTaskExecutor) throws Exception {
 		Tracciato tracciato = context.getTracciato();
 		TracciatoPendenza beanDati = context.getBeanDati();
 		ZipStampeBuilder zipBuilder = new ZipStampeBuilder();
+		int lotto = this.batchProperties.getStampeChunkSize();
 		long ok = 0;
 		long ko = 0;
 		int pagina = 0;
 		List<Versamento> versamenti;
 		do {
 			versamenti = versamentoRepository.findVersamentiDaStampare(tracciato.getId(), PageRequest.of(pagina, PAGE_SIZE_STAMPE));
-			for (Versamento versamento : versamenti) {
-				RisultatoStampa risultato = stampaAvvisoService.stampa(versamento);
-				if (risultato.ok()) {
-					ok++;
-				} else {
-					ko++;
+
+			// produzione PDF in parallelo per lotti
+			List<CompletableFuture<List<RisultatoStampa>>> futures = new ArrayList<>();
+			for (int i = 0; i < versamenti.size(); i += lotto) {
+				List<Versamento> sottoInsieme = List.copyOf(versamenti.subList(i, Math.min(i + lotto, versamenti.size())));
+				futures.add(CompletableFuture.supplyAsync(
+						() -> sottoInsieme.stream().map(stampaAvvisoService::stampa).toList(), stampeTaskExecutor));
+			}
+			// aggregazione sequenziale nello ZIP
+			for (CompletableFuture<List<RisultatoStampa>> future : futures) {
+				for (RisultatoStampa risultato : future.join()) {
+					if (risultato.ok()) {
+						ok++;
+					} else {
+						ko++;
+					}
+					zipBuilder.aggiungi(risultato);
 				}
-				zipBuilder.aggiungi(risultato);
 			}
 			pagina++;
 		} while (versamenti.size() == PAGE_SIZE_STAMPE);
