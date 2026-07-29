@@ -19,8 +19,11 @@
  */
 package it.govpay.tracciati.batch.stampe;
 
+import java.time.Duration;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -31,18 +34,26 @@ import it.govpay.tracciati.stampe.client.model.PaymentNotice;
  * Client HTTP verso il microservizio stampe {@code govpay-stampe-api} (contratto OpenAPI v1.1.0).
  *
  * <p>Usa Spring {@link RestClient} (Jackson 3) per serializzare la richiesta e ricevere il PDF
- * binario. Il base URL è configurabile via {@code govpay.tracciati.stampe.base-url}.</p>
+ * binario. Il servizio è invocato <b>senza autenticazione</b> con timeout di default
+ * (configurabili). Il base URL è configurabile via {@code govpay.tracciati.stampe.base-url}.</p>
  *
- * <p>TODO(8): integrare autenticazione/timeout/retry (eventualmente tramite il connettore
- * configurato in {@code govpay-common} {@code ConnettoreService}).</p>
+ * <p>La gestione degli errori è a carico del chiamante ({@code StampaAvvisoService}): un errore in
+ * fase di produzione della stampa viene intercettato e la stampa marcata come fallita nei metadati
+ * del tracciato ({@code bean_dati.numStampeKo}).</p>
  */
 @Component
 public class StampeClient {
 
 	private final RestClient restClient;
 
-	public StampeClient(@Value("${govpay.tracciati.stampe.base-url:}") String baseUrl) {
-		this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+	public StampeClient(
+			@Value("${govpay.tracciati.stampe.base-url:}") String baseUrl,
+			@Value("${govpay.tracciati.stampe.connect-timeout-ms:10000}") int connectTimeoutMs,
+			@Value("${govpay.tracciati.stampe.read-timeout-ms:60000}") int readTimeoutMs) {
+		SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+		requestFactory.setConnectTimeout(Duration.ofMillis(connectTimeoutMs));
+		requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMs));
+		this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
 	}
 
 	/** Avviso di pagamento standard: {@code POST /standard} → PDF. */
