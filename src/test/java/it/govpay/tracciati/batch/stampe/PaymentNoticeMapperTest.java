@@ -48,7 +48,7 @@ class PaymentNoticeMapperTest {
 				.numeroAvviso("301000000000000123")
 				.build();
 		Creditor creditor = new Creditor().fiscalCode("01234567890").businessName("Comune di Test");
-		DatiAvvisoCreditore dati = new DatiAvvisoCreditore(creditor, null, "PAGOPA|002|...", null, null, null);
+		DatiAvvisoCreditore dati = new DatiAvvisoCreditore(creditor, null, "PAGOPA|002|...", new byte[]{1, 2}, null, null, null);
 
 		PaymentNotice pn = this.mapper.toPaymentNotice(v, dati);
 

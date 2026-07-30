@@ -19,20 +19,21 @@
  */
 package it.govpay.tracciati.batch.stampe;
 
-import it.govpay.tracciati.stampe.client.model.Creditor;
-import it.govpay.tracciati.stampe.client.model.Iban;
-import it.govpay.tracciati.stampe.client.model.Languages;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/**
- * Dati dell'avviso derivati dal dominio/IUV (non ricavabili dalla sola posizione debitoria):
- * ente creditore, IBAN, stringa QR pagoPA, logo, lingua, titolo, flag bollettino postale.
- */
-public record DatiAvvisoCreditore(
-		Creditor creditor,
-		Iban iban,
-		String qrcode,
-		byte[] logo,
-		Languages language,
-		String title,
-		Boolean postale) {
+import org.junit.jupiter.api.Test;
+
+class QrCodeUtilsTest {
+
+	@Test
+	void componeQrPagoPaConImportoInCentesimi() {
+		assertEquals("PAGOPA|002|301000000000000123|01234567890|12345",
+				QrCodeUtils.buildQrCodePagoPa("301000000000000123", "01234567890", 123.45));
+	}
+
+	@Test
+	void importoInteroInCentesimi() {
+		assertEquals("PAGOPA|002|300000000000000001|00000000000|100000",
+				QrCodeUtils.buildQrCodePagoPa("300000000000000001", "00000000000", 1000.0));
+	}
 }

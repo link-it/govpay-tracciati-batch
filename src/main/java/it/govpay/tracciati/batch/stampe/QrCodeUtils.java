@@ -19,20 +19,25 @@
  */
 package it.govpay.tracciati.batch.stampe;
 
-import it.govpay.tracciati.stampe.client.model.Creditor;
-import it.govpay.tracciati.stampe.client.model.Iban;
-import it.govpay.tracciati.stampe.client.model.Languages;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 
 /**
- * Dati dell'avviso derivati dal dominio/IUV (non ricavabili dalla sola posizione debitoria):
- * ente creditore, IBAN, stringa QR pagoPA, logo, lingua, titolo, flag bollettino postale.
+ * Composizione della stringa QR pagoPA (formato 002), port di
+ * {@code IuvUtils.buildQrCode002} della procedura legacy (ramo con numero avviso):
+ * {@code PAGOPA|002|<numeroAvviso>|<codDominio>|<importoInCentesimi>}.
  */
-public record DatiAvvisoCreditore(
-		Creditor creditor,
-		Iban iban,
-		String qrcode,
-		byte[] logo,
-		Languages language,
-		String title,
-		Boolean postale) {
+public final class QrCodeUtils {
+
+	private QrCodeUtils() {
+		// utility
+	}
+
+	public static String buildQrCodePagoPa(String numeroAvviso, String codDominio, double importoTotale) {
+		String centesimi = BigDecimal.valueOf(importoTotale)
+				.movePointRight(2)
+				.setScale(0, RoundingMode.HALF_UP)
+				.toPlainString();
+		return "PAGOPA|002|" + numeroAvviso + "|" + codDominio + "|" + centesimi;
+	}
 }

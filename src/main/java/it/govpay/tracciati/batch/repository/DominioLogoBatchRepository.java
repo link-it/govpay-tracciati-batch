@@ -17,22 +17,19 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-package it.govpay.tracciati.batch.stampe;
+package it.govpay.tracciati.batch.repository;
 
-import it.govpay.tracciati.stampe.client.model.Creditor;
-import it.govpay.tracciati.stampe.client.model.Iban;
-import it.govpay.tracciati.stampe.client.model.Languages;
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import it.govpay.common.entity.DominioLogoEntity;
 
 /**
- * Dati dell'avviso derivati dal dominio/IUV (non ricavabili dalla sola posizione debitoria):
- * ente creditore, IBAN, stringa QR pagoPA, logo, lingua, titolo, flag bollettino postale.
+ * Accesso al logo del dominio (entity di govpay-common) per codice dominio.
+ * Repository locale con finder dedicato (il {@code DominioLogoRepository} di common non lo espone).
  */
-public record DatiAvvisoCreditore(
-		Creditor creditor,
-		Iban iban,
-		String qrcode,
-		byte[] logo,
-		Languages language,
-		String title,
-		Boolean postale) {
+public interface DominioLogoBatchRepository extends JpaRepository<DominioLogoEntity, Long> {
+
+	Optional<DominioLogoEntity> findByCodDominio(String codDominio);
 }

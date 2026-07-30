@@ -28,18 +28,14 @@ import it.govpay.tracciati.batch.dto.EsitoCaricamento;
 import it.govpay.tracciati.batch.dto.PendenzaPost;
 import it.govpay.tracciati.batch.entity.Tracciato;
 import it.govpay.tracciati.batch.service.CaricamentoService;
-import it.govpay.tracciati.batch.stampe.DatiAvvisoCreditore;
-import it.govpay.tracciati.batch.stampe.DatiAvvisoResolver;
-import it.govpay.tracciati.stampe.client.model.Creditor;
 
 /**
- * Implementazioni STUB dei seam ancora aperti ({@link CaricamentoService},
- * {@link DatiAvvisoResolver}), fornite solo per consentire il wiring del contesto e l'assemblaggio
- * del Job in assenza di un DB GovPay reale.
+ * Implementazione STUB del seam ancora aperto {@link CaricamentoService}, fornita solo per
+ * consentire il wiring del contesto e l'assemblaggio del Job in assenza di un DB GovPay reale.
  *
- * <p>Sono attive solo se non esiste già un bean concreto ({@code @ConditionalOnMissingBean}): quando
- * verranno implementati i servizi reali (risoluzione anagrafica + IUV + insert; QR/loghi), questi
- * stub verranno automaticamente sostituiti. Lo stub di caricamento ritorna sempre esito KO.</p>
+ * <p>Attiva solo se non esiste già un bean concreto ({@code @ConditionalOnMissingBean}): quando verrà
+ * implementato il servizio reale (risoluzione anagrafica + IUV + insert) questo stub verrà
+ * automaticamente sostituito. Ritorna sempre esito KO.</p>
  */
 @Configuration
 public class SeamStubConfiguration {
@@ -58,13 +54,5 @@ public class SeamStubConfiguration {
 				return EsitoCaricamento.ko("CaricamentoService non implementato (stub)");
 			}
 		};
-	}
-
-	@Bean
-	@ConditionalOnMissingBean(DatiAvvisoResolver.class)
-	public DatiAvvisoResolver datiAvvisoResolverStub() {
-		return versamento -> new DatiAvvisoCreditore(
-				new Creditor().fiscalCode("00000000000").businessName("N/D"),
-				null, null, null, null, Boolean.FALSE);
 	}
 }

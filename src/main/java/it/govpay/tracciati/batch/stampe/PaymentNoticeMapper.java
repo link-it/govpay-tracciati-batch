@@ -61,6 +61,7 @@ public class PaymentNoticeMapper {
 		return new PaymentNotice()
 				.language(dati.language() != null ? dati.language() : Languages.IT)
 				.title(StringUtils.hasText(dati.title()) ? dati.title() : TITOLO_DEFAULT)
+				.firstLogo(dati.logo())
 				.creditor(dati.creditor())
 				.debtor(debtor)
 				.postal(dati.postale() != null ? dati.postale() : Boolean.FALSE)

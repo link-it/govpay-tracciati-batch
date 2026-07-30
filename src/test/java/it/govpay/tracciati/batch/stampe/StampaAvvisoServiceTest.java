@@ -58,7 +58,7 @@ class StampaAvvisoServiceTest {
 	void stampaOkSalvaStampaERitornaPdf() {
 		Versamento v = versamentoConAvviso();
 		when(this.datiAvvisoResolver.risolvi(v)).thenReturn(
-				new DatiAvvisoCreditore(new Creditor().fiscalCode("01234567890").businessName("Comune"), null, "qr", null, null, null));
+				new DatiAvvisoCreditore(new Creditor().fiscalCode("01234567890").businessName("Comune"), null, "qr", null, null, null, null));
 		when(this.stampeClient.creaAvvisoStandard(any(PaymentNotice.class))).thenReturn(new byte[]{9, 8, 7});
 
 		RisultatoStampa esito = this.service.stampa(v);
@@ -80,7 +80,7 @@ class StampaAvvisoServiceTest {
 	void erroreClientProduceEsitoKo() {
 		Versamento v = versamentoConAvviso();
 		when(this.datiAvvisoResolver.risolvi(v)).thenReturn(
-				new DatiAvvisoCreditore(new Creditor().fiscalCode("01234567890").businessName("Comune"), null, "qr", null, null, null));
+				new DatiAvvisoCreditore(new Creditor().fiscalCode("01234567890").businessName("Comune"), null, "qr", null, null, null, null));
 		when(this.stampeClient.creaAvvisoStandard(any(PaymentNotice.class))).thenThrow(new RuntimeException("servizio non disponibile"));
 
 		RisultatoStampa esito = this.service.stampa(v);

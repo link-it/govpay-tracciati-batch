@@ -40,7 +40,7 @@ paths:
             application/pdf:
               schema:
                 type: string
-                format: binary
+                format: byte
         '400':
           $ref: "#/components/responses/400BadRequest"
         '401':
@@ -74,7 +74,7 @@ paths:
             application/pdf:
               schema:
                 type: string
-                format: binary
+                format: byte
         '400':
           $ref: "#/components/responses/400BadRequest"
         '401':
@@ -108,7 +108,7 @@ paths:
             application/pdf:
               schema:
                 type: string
-                format: binary
+                format: byte
         '400':
           $ref: "#/components/responses/400BadRequest"
         '401':
@@ -273,10 +273,10 @@ components:
           $ref: '#/components/schemas/Languages'
         first_logo:
           type: string
-          format: binary
+          format: byte
         second_logo:
           type: string
-          format: binary
+          format: byte
         title:
           type: string
           example: "Avviso di pagamento"
