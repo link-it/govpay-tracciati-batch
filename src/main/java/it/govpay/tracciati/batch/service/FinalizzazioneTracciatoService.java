@@ -28,6 +28,7 @@ import it.govpay.tracciati.batch.dto.StatoTracciatoType;
 import it.govpay.tracciati.batch.dto.TracciatoPendenza;
 import it.govpay.tracciati.batch.entity.StatoElaborazione;
 import it.govpay.tracciati.batch.entity.Tracciato;
+import it.govpay.tracciati.batch.gde.GdeService;
 import it.govpay.tracciati.batch.metrics.TracciatiMetrics;
 import it.govpay.tracciati.batch.repository.TracciatoRepository;
 import tools.jackson.databind.ObjectMapper;
@@ -51,12 +52,14 @@ public class FinalizzazioneTracciatoService {
 	private final TracciatoRepository tracciatoRepository;
 	private final ObjectMapper objectMapper;
 	private final TracciatiMetrics metrics;
+	private final GdeService gdeService;
 
 	public FinalizzazioneTracciatoService(TracciatoRepository tracciatoRepository, ObjectMapper objectMapper,
-			TracciatiMetrics metrics) {
+			TracciatiMetrics metrics, GdeService gdeService) {
 		this.tracciatoRepository = tracciatoRepository;
 		this.objectMapper = objectMapper;
 		this.metrics = metrics;
+		this.gdeService = gdeService;
 	}
 
 	/** Chiude la fase di caricamento: calcola l'esito di dettaglio e decide IN_STAMPA vs COMPLETATO. */
@@ -92,6 +95,7 @@ public class FinalizzazioneTracciatoService {
 		}
 		salva(tracciato, beanDati);
 		this.metrics.tracciatoScartato();
+		this.gdeService.inviaEsitoElaborazione(tracciato, false);
 	}
 
 	private void completa(Tracciato tracciato, TracciatoPendenza beanDati) {
@@ -100,6 +104,7 @@ public class FinalizzazioneTracciatoService {
 		tracciato.setDataCompletamento(LocalDateTime.now());
 		salva(tracciato, beanDati);
 		this.metrics.tracciatoCompletato();
+		this.gdeService.inviaEsitoElaborazione(tracciato, true);
 	}
 
 	private void impostaStatoDettaglio(TracciatoPendenza beanDati) {

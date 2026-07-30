@@ -33,6 +33,7 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import it.govpay.tracciati.batch.dto.TracciatoPendenza;
 import it.govpay.tracciati.batch.entity.StatoElaborazione;
 import it.govpay.tracciati.batch.entity.Tracciato;
+import it.govpay.tracciati.batch.gde.GdeService;
 import it.govpay.tracciati.batch.metrics.TracciatiMetrics;
 import it.govpay.tracciati.batch.repository.TracciatoRepository;
 import tools.jackson.databind.json.JsonMapper;
@@ -40,9 +41,10 @@ import tools.jackson.databind.json.JsonMapper;
 class FinalizzazioneTracciatoServiceTest {
 
 	private final TracciatoRepository tracciatoRepository = mock(TracciatoRepository.class);
+	private final GdeService gdeService = mock(GdeService.class);
 	private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 	private final FinalizzazioneTracciatoService service = new FinalizzazioneTracciatoService(
-			this.tracciatoRepository, JsonMapper.builder().build(), new TracciatiMetrics(this.meterRegistry));
+			this.tracciatoRepository, JsonMapper.builder().build(), new TracciatiMetrics(this.meterRegistry), this.gdeService);
 
 	@Test
 	void completaCaricamentoSenzaStampeVaInCompletato() {
@@ -58,6 +60,7 @@ class FinalizzazioneTracciatoServiceTest {
 		assertTrue(tracciato.getBeanDati().contains("CARICAMENTO_OK"));
 		assertEquals(1.0, this.meterRegistry.get("govpay.tracciati.completati").counter().count());
 		verify(this.tracciatoRepository, times(1)).save(any(Tracciato.class));
+		verify(this.gdeService).inviaEsitoElaborazione(any(Tracciato.class), org.mockito.ArgumentMatchers.eq(true));
 	}
 
 	@Test
@@ -87,5 +90,6 @@ class FinalizzazioneTracciatoServiceTest {
 		assertTrue(tracciato.getDescrizioneStato().contains("boom"));
 		assertTrue(tracciato.getBeanDati().contains("ANNULLATO"));
 		assertEquals(1.0, this.meterRegistry.get("govpay.tracciati.scartati").counter().count());
+		verify(this.gdeService).inviaEsitoElaborazione(any(Tracciato.class), org.mockito.ArgumentMatchers.eq(false));
 	}
 }
