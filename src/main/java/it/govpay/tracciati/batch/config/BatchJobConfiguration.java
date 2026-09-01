@@ -19,9 +19,12 @@
  */
 package it.govpay.tracciati.batch.config;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +59,7 @@ import it.govpay.tracciati.batch.service.FinalizzazioneTracciatoService;
 import it.govpay.tracciati.batch.service.ProduzioneEsitoService;
 import it.govpay.tracciati.batch.stampe.StampaAvvisoService;
 import it.govpay.tracciati.batch.stampe.ZipStampeBuilder;
+import it.govpay.tracciati.batch.stampe.ZipStampeStore;
 import it.govpay.tracciati.batch.step.caricamento.CaricamentoItemProcessor;
 import it.govpay.tracciati.batch.step.caricamento.CaricamentoItemWriter;
 import it.govpay.tracciati.batch.step.caricamento.JsonTracciatoItemReader;
@@ -78,7 +82,9 @@ import tools.jackson.databind.ObjectMapper;
  * configurabili da properties ({@code govpay.batch.caricamento.*} / {@code govpay.batch.stampe.*}),
  * con la stessa semantica della procedura legacy.</p>
  *
- * <p>Nota: la persistenza dello ZIP su {@code zip_stampe} (OID/BLOB) è il prossimo affinamento.</p>
+ * <p>Lo ZIP degli avvisi è scritto in streaming su {@code tracciati.zip_stampe} (Large Object su
+ * PostgreSQL, Blob sugli altri database) tramite {@link ZipStampeStore}, senza materializzare
+ * l'archivio in memoria.</p>
  */
 @Configuration
 public class BatchJobConfiguration {
@@ -220,11 +226,12 @@ public class BatchJobConfiguration {
 
 	@Bean
 	public Step stampaAvvisiStep(ElaborazioneTracciatoContext context, StampaAvvisoService stampaAvvisoService,
-			VersamentoRepository versamentoRepository, SimpleAsyncTaskExecutor stampeTaskExecutor) {
+			VersamentoRepository versamentoRepository, SimpleAsyncTaskExecutor stampeTaskExecutor,
+			ZipStampeStore zipStampeStore) {
 		Tasklet tasklet = (contribution, chunkContext) -> {
 			if (context.isPresente() && context.getTracciato().getStato() == StatoElaborazione.IN_STAMPA
 					&& context.getBeanDati().isStampaAvvisi()) {
-				eseguiStampe(context, stampaAvvisoService, versamentoRepository, stampeTaskExecutor);
+				eseguiStampe(context, stampaAvvisoService, versamentoRepository, stampeTaskExecutor, zipStampeStore);
 			}
 			return RepeatStatus.FINISHED;
 		};
@@ -233,17 +240,39 @@ public class BatchJobConfiguration {
 	}
 
 	/**
-	 * Produce gli avvisi in parallelo (lotti da {@code stampeChunkSize} sul pool stampe) e li aggiunge
-	 * allo ZIP in modo sequenziale (lo ZIP non è thread-safe), come nella procedura legacy.
+	 * Produce gli avvisi e li aggrega nello ZIP, che viene scritto direttamente sulla colonna
+	 * {@code tracciati.zip_stampe} senza copia in memoria (come nella procedura legacy).
 	 */
 	private void eseguiStampe(ElaborazioneTracciatoContext context, StampaAvvisoService stampaAvvisoService,
-			VersamentoRepository versamentoRepository, SimpleAsyncTaskExecutor stampeTaskExecutor) throws Exception {
+			VersamentoRepository versamentoRepository, SimpleAsyncTaskExecutor stampeTaskExecutor,
+			ZipStampeStore zipStampeStore) {
 		Tracciato tracciato = context.getTracciato();
 		TracciatoPendenza beanDati = context.getBeanDati();
-		ZipStampeBuilder zipBuilder = new ZipStampeBuilder();
+		AtomicLong ok = new AtomicLong();
+		AtomicLong ko = new AtomicLong();
+		AtomicInteger avvisiNelloZip = new AtomicInteger();
+
+		long byteScritti = zipStampeStore.scrivi(tracciato.getId(), destinazione -> {
+			ZipStampeBuilder zipBuilder = new ZipStampeBuilder(destinazione);
+			aggregaStampe(tracciato, zipBuilder, stampaAvvisoService, versamentoRepository, stampeTaskExecutor, ok, ko);
+			zipBuilder.chiudi();
+			avvisiNelloZip.set(zipBuilder.getNumeroPdf());
+		});
+
+		beanDati.setNumStampeOk(ok.get());
+		beanDati.setNumStampeKo(ko.get());
+		log.info("Stampe tracciato {}: {} ok, {} ko, {} avvisi nello ZIP salvato su zip_stampe ({} byte)",
+				tracciato.getId(), ok.get(), ko.get(), avvisiNelloZip.get(), byteScritti);
+	}
+
+	/**
+	 * Produce i PDF in parallelo (lotti da {@code stampeChunkSize} sul pool stampe) e li aggiunge allo
+	 * ZIP in modo sequenziale (lo ZIP non è thread-safe), come nella procedura legacy.
+	 */
+	private void aggregaStampe(Tracciato tracciato, ZipStampeBuilder zipBuilder,
+			StampaAvvisoService stampaAvvisoService, VersamentoRepository versamentoRepository,
+			SimpleAsyncTaskExecutor stampeTaskExecutor, AtomicLong ok, AtomicLong ko) throws IOException {
 		int lotto = this.batchProperties.getStampeChunkSize();
-		long ok = 0;
-		long ko = 0;
 		int pagina = 0;
 		List<Versamento> versamenti;
 		do {
@@ -260,22 +289,15 @@ public class BatchJobConfiguration {
 			for (CompletableFuture<List<RisultatoStampa>> future : futures) {
 				for (RisultatoStampa risultato : future.join()) {
 					if (risultato.ok()) {
-						ok++;
+						ok.incrementAndGet();
 					} else {
-						ko++;
+						ko.incrementAndGet();
 					}
 					zipBuilder.aggiungi(risultato);
 				}
 			}
 			pagina++;
 		} while (versamenti.size() == PAGE_SIZE_STAMPE);
-
-		byte[] zip = zipBuilder.build();
-		beanDati.setNumStampeOk(ok);
-		beanDati.setNumStampeKo(ko);
-		// TODO(D4): persistenza dello ZIP su tracciati.zip_stampe (OID PostgreSQL / BLOB) via JDBC vendor-specific
-		log.info("Stampe tracciato {}: {} ok, {} ko, ZIP di {} byte (persistenza zip_stampe da completare)",
-				tracciato.getId(), ok, ko, zip.length);
 	}
 
 	// ── Step 5: finalizzazione (COMPLETATO dopo la stampa) ───────────────────

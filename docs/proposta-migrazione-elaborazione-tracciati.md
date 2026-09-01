@@ -208,7 +208,7 @@ Un `Job` `elaborazioneTracciatoPendenzeJob` parametrizzato per `idTracciato` (id
 - **R3 (da D8)** — Origine di **loghi ente**, dati creditore e stringa **QR pagoPA** per il payload del microservizio (ricalcolo vs lettura da GovPay/config dominio).
 - **R4 (da D11)** — Contratto dell'endpoint REST di avvio on-demand (autenticazione, parametri: per dominio/per idTracciato/tutti), coerente con gli altri batch.
 - **R5 (da D10)** — URL di deploy del microservizio stampe negli ambienti e modalità di autenticazione.
-- **R6 (da D4)** — Se centralizzare i 5 rami vendor di scrittura BLOB/Large Object in un'unica utility (senza cambiare lo storage).
+- **R6 (da D4)** — *Risolto in implementazione*: i rami vendor sono centralizzati in `ZipStampeStoreJdbc` e ridotti a 2 modalità (`LARGE_OBJECT` per PostgreSQL, `BLOB` per Oracle/MySQL/SQLServer/HSQL/H2), risolte dal vendor della connessione con override da properties (`govpay.batch.modalita-zip-stampe`). Mantenuta l'ottimizzazione del vecchio flusso: ZIP prodotto in streaming sulla destinazione DB, senza copia in memoria.
 
 ---
 

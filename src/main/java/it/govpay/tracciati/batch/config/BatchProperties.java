@@ -22,6 +22,7 @@ package it.govpay.tracciati.batch.config;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 
+import it.govpay.tracciati.batch.stampe.ModalitaZipStampe;
 import lombok.Data;
 
 /**
@@ -56,4 +57,9 @@ public class BatchProperties {
 	private int stampePoolSize = 10;
 	/** Avvisi stampati per thread/lotto (legacy: numeroAvvisiDaStamparePerThread). */
 	private int stampeChunkSize = 100;
+	/**
+	 * Modalità di scrittura di {@code tracciati.zip_stampe}: per default è dedotta dal vendor del
+	 * database (OID su PostgreSQL, Blob altrove); da forzare solo in casi particolari.
+	 */
+	private ModalitaZipStampe modalitaZipStampe = ModalitaZipStampe.AUTO;
 }

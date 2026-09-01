@@ -19,8 +19,8 @@
  */
 package it.govpay.tracciati.batch.stampe;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Set;
@@ -33,16 +33,24 @@ import it.govpay.tracciati.batch.dto.RisultatoStampa;
  * Costruisce lo ZIP degli avvisi PDF di un tracciato, deduplicando per documento/numero avviso
  * (port di {@code TracciatiUtils.aggiungiStampaAvviso}): per i documenti multi-rata si mantiene una
  * sola copia. Stateful: un'istanza per tracciato.
+ *
+ * <p>Scrive direttamente sullo stream di destinazione (tipicamente quello verso la colonna
+ * {@code tracciati.zip_stampe}, vedi {@link ZipStampeStore}) senza accumulare l'archivio in memoria.
+ * {@link #chiudi()} completa l'archivio ma <b>non chiude</b> lo stream sottostante, che resta in
+ * carico al chiamante.</p>
  */
 public class ZipStampeBuilder {
 
 	private static final String MESSAGGIO_NESSUN_AVVISO = "Attenzione: non sono presenti inserimenti andati a buon fine nel tracciato selezionato.";
 
-	private final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-	private final ZipOutputStream zos = new ZipOutputStream(this.baos);
+	private final ZipOutputStream zos;
 	private final Set<String> numeriAvviso = new HashSet<>();
 	private final Set<String> numeriDocumento = new HashSet<>();
 	private int numeroPdf = 0;
+
+	public ZipStampeBuilder(OutputStream destinazione) {
+		this.zos = new ZipOutputStream(destinazione);
+	}
 
 	/** Aggiunge il PDF dell'avviso allo ZIP, saltando gli esiti KO e i duplicati. */
 	public void aggiungi(RisultatoStampa risultato) throws IOException {
@@ -73,14 +81,17 @@ public class ZipStampeBuilder {
 		return this.numeroPdf;
 	}
 
-	/** Chiude lo ZIP e ne restituisce i byte; se vuoto inserisce un {@code errore.txt} (come il legacy). */
-	public byte[] build() throws IOException {
+	/**
+	 * Completa lo ZIP; se non contiene alcun avviso inserisce un {@code errore.txt} (come il legacy).
+	 * Lo stream di destinazione non viene chiuso.
+	 */
+	public void chiudi() throws IOException {
 		if (this.numeroPdf == 0) {
 			this.zos.putNextEntry(new ZipEntry("errore.txt"));
 			this.zos.write(MESSAGGIO_NESSUN_AVVISO.getBytes(StandardCharsets.UTF_8));
 			this.zos.closeEntry();
 		}
-		this.zos.close();
-		return this.baos.toByteArray();
+		this.zos.finish();
+		this.zos.flush();
 	}
 }

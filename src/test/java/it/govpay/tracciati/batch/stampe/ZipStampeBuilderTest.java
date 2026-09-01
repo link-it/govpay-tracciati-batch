@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.ZipEntry;
@@ -38,7 +39,8 @@ class ZipStampeBuilderTest {
 
 	@Test
 	void deduplicaDocumentiENumeriAvviso() throws Exception {
-		ZipStampeBuilder builder = new ZipStampeBuilder();
+		ByteArrayOutputStream destinazione = new ByteArrayOutputStream();
+		ZipStampeBuilder builder = new ZipStampeBuilder(destinazione);
 		// due rate dello stesso documento -> una sola copia
 		builder.aggiungi(RisultatoStampa.ok(PDF, "D01", "A1", "DOC1"));
 		builder.aggiungi(RisultatoStampa.ok(PDF, "D01", "A2", "DOC1"));
@@ -49,8 +51,8 @@ class ZipStampeBuilderTest {
 		// esito KO -> saltato
 		builder.aggiungi(RisultatoStampa.ko("errore"));
 
-		byte[] zip = builder.build();
-		List<String> nomi = entryNames(zip);
+		builder.chiudi();
+		List<String> nomi = entryNames(destinazione.toByteArray());
 
 		assertEquals(2, builder.getNumeroPdf());
 		assertEquals(2, nomi.size());
@@ -60,9 +62,10 @@ class ZipStampeBuilderTest {
 
 	@Test
 	void zipVuotoContieneErroreTxt() throws Exception {
-		ZipStampeBuilder builder = new ZipStampeBuilder();
-		byte[] zip = builder.build();
-		List<String> nomi = entryNames(zip);
+		ByteArrayOutputStream destinazione = new ByteArrayOutputStream();
+		ZipStampeBuilder builder = new ZipStampeBuilder(destinazione);
+		builder.chiudi();
+		List<String> nomi = entryNames(destinazione.toByteArray());
 		assertEquals(List.of("errore.txt"), nomi);
 	}
 
