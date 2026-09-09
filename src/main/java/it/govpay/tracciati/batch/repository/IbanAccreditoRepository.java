@@ -17,20 +17,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-package it.govpay.tracciati.batch;
+package it.govpay.tracciati.batch.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import it.govpay.tracciati.batch.entity.IbanAccredito;
 
 /**
- * Costanti applicative del batch tracciati.
+ * Repository dei conti di accredito, usati per il bollettino postale dell'avviso.
  */
-public class Costanti {
-
-	private Costanti() {
-		// costanti
-	}
-
-	/** Nome del job Spring Batch di elaborazione dei tracciati di caricamento pendenze. */
-	public static final String ELABORAZIONE_TRACCIATI_PENDENZE_JOB_NAME = "elaborazioneTracciatiPendenzeJob";
-
-	/** Stato di una posizione debitoria non ancora pagata: è quella per cui si stampa l'avviso. */
-	public static final String STATO_VERSAMENTO_NON_ESEGUITO = "NON_ESEGUITO";
+public interface IbanAccreditoRepository extends JpaRepository<IbanAccredito, Long> {
 }

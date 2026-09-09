@@ -38,10 +38,30 @@ public interface VersamentoRepository extends JpaRepository<Versamento, Long> {
 	Optional<Versamento> findByIdApplicazioneAndCodVersamentoEnte(Long idApplicazione, String codVersamentoEnte);
 
 	/**
-	 * Posizioni debitorie di un tracciato per cui produrre l'avviso: quelle con numero avviso,
-	 * collegate al tracciato tramite le operazioni di caricamento ({@code operazioni.id_versamento}).
+	 * Documenti del tracciato per cui produrre un avviso: l'avviso di un documento riporta tutte le
+	 * sue rate, quindi si itera sui documenti e non sulle singole posizioni.
 	 */
-	@Query("SELECT v FROM Versamento v WHERE v.numeroAvviso IS NOT NULL AND v.id IN "
+	@Query("SELECT DISTINCT v.idDocumento FROM Versamento v WHERE v.idDocumento IS NOT NULL "
+			+ "AND v.numeroAvviso IS NOT NULL AND v.id IN "
 			+ "(SELECT o.idVersamento FROM Operazione o WHERE o.idTracciato = :idTracciato AND o.idVersamento IS NOT NULL)")
-	List<Versamento> findVersamentiDaStampare(@Param("idTracciato") Long idTracciato, Pageable pageable);
+	List<Long> findIdDocumentiDaStampare(@Param("idTracciato") Long idTracciato, Pageable pageable);
+
+	/**
+	 * Rate di un documento da riportare sull'avviso: come {@code Documento.getVersamentiPagabili} del
+	 * legacy si prendono le posizioni non eseguite, limitate a quelle caricate dal tracciato.
+	 */
+	@Query("SELECT v FROM Versamento v WHERE v.idDocumento = :idDocumento AND v.numeroAvviso IS NOT NULL "
+			+ "AND v.statoVersamento = :statoVersamento AND v.id IN "
+			+ "(SELECT o.idVersamento FROM Operazione o WHERE o.idTracciato = :idTracciato AND o.idVersamento IS NOT NULL) "
+			+ "ORDER BY v.id")
+	List<Versamento> findVersamentiDocumentoDaStampare(@Param("idTracciato") Long idTracciato,
+			@Param("idDocumento") Long idDocumento, @Param("statoVersamento") String statoVersamento);
+
+	/**
+	 * Posizioni del tracciato senza documento, per cui l'avviso corrisponde alla singola posizione.
+	 */
+	@Query("SELECT v FROM Versamento v WHERE v.idDocumento IS NULL AND v.numeroAvviso IS NOT NULL AND v.id IN "
+			+ "(SELECT o.idVersamento FROM Operazione o WHERE o.idTracciato = :idTracciato AND o.idVersamento IS NOT NULL) "
+			+ "ORDER BY v.id")
+	List<Versamento> findVersamentiSenzaDocumentoDaStampare(@Param("idTracciato") Long idTracciato, Pageable pageable);
 }

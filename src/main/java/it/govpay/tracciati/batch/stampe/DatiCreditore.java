@@ -20,19 +20,10 @@
 package it.govpay.tracciati.batch.stampe;
 
 import it.govpay.tracciati.stampe.client.model.Creditor;
-import it.govpay.tracciati.stampe.client.model.Iban;
-import it.govpay.tracciati.stampe.client.model.Languages;
 
 /**
- * Dati dell'avviso derivati dal dominio/IUV (non ricavabili dalla sola posizione debitoria):
- * ente creditore, IBAN, stringa QR pagoPA, logo, lingua, titolo, flag bollettino postale.
+ * Dati dell'ente creditore per l'avviso: anagrafica (dominio + unità operativa), logo dell'ente e
+ * logo secondario delle pendenze multibeneficiario.
  */
-public record DatiAvvisoCreditore(
-		Creditor creditor,
-		Iban iban,
-		String qrcode,
-		byte[] logo,
-		Languages language,
-		String title,
-		Boolean postale) {
+public record DatiCreditore(Creditor creditor, byte[] logo, byte[] logoSecondario) {
 }
