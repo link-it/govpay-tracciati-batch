@@ -19,7 +19,6 @@
  */
 package it.govpay.tracciati.batch.stampe;
 
-import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,16 +28,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import it.govpay.tracciati.batch.dto.RisultatoStampa;
-import it.govpay.tracciati.batch.entity.Stampa;
 import it.govpay.tracciati.batch.entity.Versamento;
-import it.govpay.tracciati.batch.repository.StampaRepository;
 import it.govpay.tracciati.stampe.client.model.Iban;
 
 /**
- * Produce l'avviso PDF di un'unità di stampa ({@link AvvisoDaStampare}) tramite il microservizio e
- * ne persiste il risultato nella tabella {@code stampe}. La tipologia di avviso non è scelta qui:
- * dipende dai dati (rate, soglie, IBAN postale) e l'unica decisione è tra l'endpoint standard e
- * quello delle violazioni al Codice della Strada.
+ * Produce l'avviso PDF di un'unità di stampa ({@link AvvisoDaStampare}) tramite il microservizio.
+ * La tipologia di avviso non è scelta qui: dipende dai dati (rate, soglie, IBAN postale) e l'unica
+ * decisione è tra l'endpoint standard e quello delle violazioni al Codice della Strada.
+ *
+ * <p>Il PDF <b>non viene salvato</b> sulla tabella {@code stampe}: finisce solo nello ZIP del
+ * tracciato. È la scelta del vecchio flusso, dove tutti i chiamanti passano {@code salvaSuDB=false}
+ * (issue #262, "eliminato il salvataggio duplicato dell'avviso nella tabella stampe"): il PDF è già
+ * nello ZIP e la copia per avviso costava un BLOB a vuoto.</p>
  *
  * <p>In caso di errore la stampa viene marcata KO e l'elaborazione del tracciato prosegue, come
  * nella procedura legacy.</p>
@@ -47,20 +48,16 @@ import it.govpay.tracciati.stampe.client.model.Iban;
 public class StampaAvvisoService {
 
 	private static final Logger log = LoggerFactory.getLogger(StampaAvvisoService.class);
-	private static final String TIPO_STAMPA_AVVISO = "AVVISO";
 
 	private final AvvisoMapper avvisoMapper;
 	private final StampeClient stampeClient;
-	private final StampaRepository stampaRepository;
 	private final DatiCreditoreResolver datiCreditoreResolver;
 	private final IbanAvvisoResolver ibanAvvisoResolver;
 
 	public StampaAvvisoService(AvvisoMapper avvisoMapper, StampeClient stampeClient,
-			StampaRepository stampaRepository, DatiCreditoreResolver datiCreditoreResolver,
-			IbanAvvisoResolver ibanAvvisoResolver) {
+			DatiCreditoreResolver datiCreditoreResolver, IbanAvvisoResolver ibanAvvisoResolver) {
 		this.avvisoMapper = avvisoMapper;
 		this.stampeClient = stampeClient;
-		this.stampaRepository = stampaRepository;
 		this.datiCreditoreResolver = datiCreditoreResolver;
 		this.ibanAvvisoResolver = ibanAvvisoResolver;
 	}
@@ -97,8 +94,6 @@ public class StampaAvvisoService {
 						this.avvisoMapper.toPaymentNotice(daStampare, creditore, configurazione, ibanPostali));
 			}
 
-			salva(daStampare, pdf);
-
 			return RisultatoStampa.ok(pdf, creditore.creditor().getFiscalCode(), principale.getNumeroAvviso(),
 					avviso.numeroDocumento());
 		} catch (Exception e) {
@@ -115,27 +110,6 @@ public class StampaAvvisoService {
 					.ifPresent(iban -> ibanPostali.put(versamento.getId(), iban));
 		}
 		return ibanPostali;
-	}
-
-	/**
-	 * Salva il PDF sulla tabella {@code stampe}: una riga per documento se l'avviso raggruppa più
-	 * rate, altrimenti una riga per posizione. Se la stampa esiste già viene aggiornata.
-	 */
-	private void salva(AvvisoDaStampare avviso, byte[] pdf) {
-		Long idDocumento = avviso.documento() != null ? avviso.documento().getId() : null;
-		Long idVersamento = idDocumento == null ? avviso.versamentoPrincipale().getId() : null;
-
-		Stampa stampa = (idDocumento != null
-				? this.stampaRepository.findByIdDocumento(idDocumento)
-				: this.stampaRepository.findByIdVersamento(idVersamento))
-				.orElseGet(() -> Stampa.builder()
-						.tipo(TIPO_STAMPA_AVVISO)
-						.idDocumento(idDocumento)
-						.idVersamento(idVersamento)
-						.build());
-		stampa.setPdf(pdf);
-		stampa.setDataCreazione(LocalDateTime.now());
-		this.stampaRepository.save(stampa);
 	}
 
 	private static String descrizione(AvvisoDaStampare avviso) {

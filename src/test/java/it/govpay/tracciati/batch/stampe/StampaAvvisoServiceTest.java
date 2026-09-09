@@ -26,7 +26,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -38,9 +37,7 @@ import org.mockito.ArgumentCaptor;
 
 import it.govpay.tracciati.batch.dto.RisultatoStampa;
 import it.govpay.tracciati.batch.entity.Documento;
-import it.govpay.tracciati.batch.entity.Stampa;
 import it.govpay.tracciati.batch.entity.Versamento;
-import it.govpay.tracciati.batch.repository.StampaRepository;
 import it.govpay.tracciati.stampe.client.model.CdsViolation;
 import it.govpay.tracciati.stampe.client.model.Creditor;
 import it.govpay.tracciati.stampe.client.model.PaymentNotice;
@@ -51,7 +48,6 @@ import tools.jackson.databind.json.JsonMapper;
 class StampaAvvisoServiceTest {
 
 	private final StampeClient stampeClient = mock(StampeClient.class);
-	private final StampaRepository stampaRepository = mock(StampaRepository.class);
 	private final DatiCreditoreResolver datiCreditoreResolver = mock(DatiCreditoreResolver.class);
 	private final IbanAvvisoResolver ibanAvvisoResolver = mock(IbanAvvisoResolver.class);
 
@@ -61,7 +57,7 @@ class StampaAvvisoServiceTest {
 			null);
 
 	private final StampaAvvisoService service = new StampaAvvisoService(this.avvisoMapper, this.stampeClient,
-			this.stampaRepository, this.datiCreditoreResolver, this.ibanAvvisoResolver);
+			this.datiCreditoreResolver, this.ibanAvvisoResolver);
 
 	private Versamento versamento(long id, String codRata) {
 		return Versamento.builder().id(id).idDominio(1L).codRata(codRata).codVersamentoEnte("P" + id)
@@ -76,9 +72,8 @@ class StampaAvvisoServiceTest {
 	}
 
 	@Test
-	void stampaDiUnaPosizioneSalvaLaStampaSulVersamento() {
+	void stampaDiUnaPosizioneRestituisceIlPdfSenzaSalvarloSuDb() {
 		anagraficaDisponibile();
-		when(this.stampaRepository.findByIdVersamento(1L)).thenReturn(Optional.empty());
 		when(this.stampeClient.creaAvvisoStandard(any(PaymentNotice.class))).thenReturn(new byte[] {9, 8, 7});
 
 		RisultatoStampa esito = this.service.stampa(AvvisoDaStampare.diVersamento(versamento(1, null)));
@@ -86,16 +81,11 @@ class StampaAvvisoServiceTest {
 		assertTrue(esito.ok());
 		assertArrayEquals(new byte[] {9, 8, 7}, esito.pdf());
 		assertEquals("01234567890", esito.codDominio());
-		ArgumentCaptor<Stampa> captor = ArgumentCaptor.forClass(Stampa.class);
-		verify(this.stampaRepository).save(captor.capture());
-		assertEquals(1L, captor.getValue().getIdVersamento());
-		assertEquals(null, captor.getValue().getIdDocumento());
 	}
 
 	@Test
-	void stampaDiUnDocumentoSalvaUnaSolaStampaSulDocumento() {
+	void unSoloAvvisoPerDocumentoConTutteLeRate() {
 		anagraficaDisponibile();
-		when(this.stampaRepository.findByIdDocumento(7L)).thenReturn(Optional.empty());
 		when(this.stampeClient.creaAvvisoStandard(any(PaymentNotice.class))).thenReturn(new byte[] {1});
 		Documento documento = Documento.builder().id(7L).codDocumento("DOC1").descrizione("Rette").build();
 
@@ -104,15 +94,14 @@ class StampaAvvisoServiceTest {
 
 		assertTrue(esito.ok());
 		assertEquals("DOC1", esito.numeroDocumento());
-		ArgumentCaptor<Stampa> captor = ArgumentCaptor.forClass(Stampa.class);
-		verify(this.stampaRepository, times(1)).save(captor.capture());
-		assertEquals(7L, captor.getValue().getIdDocumento());
+		ArgumentCaptor<PaymentNotice> captor = ArgumentCaptor.forClass(PaymentNotice.class);
+		verify(this.stampeClient).creaAvvisoStandard(captor.capture());
+		assertEquals(2, captor.getValue().getInstalments().size());
 	}
 
 	@Test
 	void violazioneCdsUsaEndpointDedicato() {
 		anagraficaDisponibile();
-		when(this.stampaRepository.findByIdDocumento(8L)).thenReturn(Optional.empty());
 		when(this.stampeClient.creaAvvisoViolazioneCds(any(CdsViolation.class))).thenReturn(new byte[] {2});
 		Documento documento = Documento.builder().id(8L).codDocumento("CDS1").descrizione("Violazione").build();
 
@@ -143,6 +132,5 @@ class StampaAvvisoServiceTest {
 		RisultatoStampa esito = this.service.stampa(AvvisoDaStampare.diVersamento(versamento(1, null)));
 
 		assertFalse(esito.ok());
-		verify(this.stampaRepository, never()).save(any());
 	}
 }
