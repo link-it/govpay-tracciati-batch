@@ -19,32 +19,26 @@
  */
 package it.govpay.tracciati.batch.dto;
 
-import it.govpay.tracciati.batch.entity.StatoOperazione;
-import lombok.Builder;
 import lombok.Data;
 
-/** Esito del caricamento/annullamento di una singola pendenza. */
+/**
+ * Sottoinsieme di {@code versamenti.proprieta} (JSON) che influenza la stampa dell'avviso
+ * (port di {@code it.govpay.core.beans.tracciati.ProprietaPendenza}): seconda lingua con la
+ * relativa causale e data di scadenza da riportare sull'avviso.
+ *
+ * <p>Il nome {@code dataScandenzaAvviso} contiene il refuso presente nel modello GovPay: va
+ * mantenuto perché è la chiave effettivamente serializzata nella colonna.</p>
+ */
 @Data
-@Builder
-public class EsitoCaricamento {
+public class ProprietaPendenza {
 
-	private StatoOperazione stato;
-	private String dettaglioEsito;
-	private Long idVersamento;
-	/**
-	 * Riferimento a {@code stampe} per {@code operazioni.id_stampa}: resta null, come nel legacy, da
-	 * quando l'avviso del tracciato non viene più salvato su DB ma solo nello ZIP (issue #262).
-	 */
-	private Long idStampa;
-	private String iuv;
-	private String numeroAvviso;
-	private String codVersamentoEnte;
-	private Long idApplicazione;
+	private String linguaSecondaria;
+	private String linguaSecondariaCausale;
+	private String dataScandenzaAvviso;
+	private String informativaImportoAvviso;
+	private String linguaSecondariaInformativaImportoAvviso;
 
-	public static EsitoCaricamento ko(String dettaglio) {
-		return EsitoCaricamento.builder()
-				.stato(StatoOperazione.ESEGUITO_KO)
-				.dettaglioEsito(dettaglio)
-				.build();
+	public LinguaSecondaria getLinguaSecondariaEnum() {
+		return LinguaSecondaria.da(this.linguaSecondaria);
 	}
 }

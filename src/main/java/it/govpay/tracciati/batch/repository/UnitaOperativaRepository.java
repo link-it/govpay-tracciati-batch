@@ -17,20 +17,18 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-package it.govpay.tracciati.batch;
+package it.govpay.tracciati.batch.repository;
+
+import java.util.Optional;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import it.govpay.tracciati.batch.entity.UnitaOperativa;
 
 /**
- * Costanti applicative del batch tracciati.
+ * Repository delle unità operative, usate per il settore e i contatti dell'ente sull'avviso.
  */
-public class Costanti {
+public interface UnitaOperativaRepository extends JpaRepository<UnitaOperativa, Long> {
 
-	private Costanti() {
-		// costanti
-	}
-
-	/** Nome del job Spring Batch di elaborazione dei tracciati di caricamento pendenze. */
-	public static final String ELABORAZIONE_TRACCIATI_PENDENZE_JOB_NAME = "elaborazioneTracciatiPendenzeJob";
-
-	/** Stato di una posizione debitoria non ancora pagata: è quella per cui si stampa l'avviso. */
-	public static final String STATO_VERSAMENTO_NON_ESEGUITO = "NON_ESEGUITO";
+	Optional<UnitaOperativa> findByIdDominioAndCodUo(Long idDominio, String codUo);
 }
