@@ -263,7 +263,6 @@ java ${INVOCAZIONE_CLIENT} \
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 ${START_TRANSACTION}
 \i /tmp/tracciati_sql/schema-${GOVPAY_DB_TYPE}.sql
-\i /tmp/tracciati_sql/create-db.sql
 COMMIT;
 EOSQL
 
