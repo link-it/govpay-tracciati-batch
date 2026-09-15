@@ -38,6 +38,7 @@ import it.govpay.common.batch.dto.LastExecutionInfo;
 import it.govpay.common.batch.dto.NextExecutionInfo;
 import it.govpay.common.batch.runner.JobExecutionHelper;
 import it.govpay.tracciati.batch.Costanti;
+import jakarta.persistence.EntityManager;
 
 /**
  * Controller REST per l'avvio on-demand e il monitoraggio del job di elaborazione tracciati.
@@ -54,8 +55,9 @@ public class BatchController extends AbstractBatchController {
 			@Qualifier(Costanti.ELABORAZIONE_TRACCIATI_PENDENZE_JOB_NAME) Job elaborazioneTracciatiPendenzeJob,
 			Environment environment,
 			ZoneId applicationZoneId,
-			@Value("${scheduler.elaborazioneTracciatiPendenzeJob.fixedDelayString:60000}") long schedulerIntervalMillis) {
-		super(jobExecutionHelper, jobRepository, environment, applicationZoneId, schedulerIntervalMillis);
+			@Value("${scheduler.elaborazioneTracciatiPendenzeJob.fixedDelayString:60000}") long schedulerIntervalMillis,
+			EntityManager entityManager) {
+		super(jobExecutionHelper, jobRepository, environment, applicationZoneId, schedulerIntervalMillis, entityManager);
 		this.elaborazioneTracciatiPendenzeJob = elaborazioneTracciatiPendenzeJob;
 	}
 
@@ -67,6 +69,16 @@ public class BatchController extends AbstractBatchController {
 	@Override
 	protected String getJobName() {
 		return Costanti.ELABORAZIONE_TRACCIATI_PENDENZE_JOB_NAME;
+	}
+
+	@Override
+	protected String getDisplayName() {
+		return "Elaborazione tracciati pendenze";
+	}
+
+	@Override
+	protected String getDescription() {
+		return "Elabora i tracciati di caricamento e annullamento delle pendenze caricati dagli enti creditori.";
 	}
 
 	@GetMapping("/run")

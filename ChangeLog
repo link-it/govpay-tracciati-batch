@@ -1,3 +1,35 @@
+2026-09-15  Giuliano Pintori <pintori@link.it>
+
+	* [Dipendenze]
+	Allineata govpay-common da 2.0.1-SNAPSHOT a 2.0.4-SNAPSHOT, la versione su
+	cui stanno gli altri sei batch e console-api. Lo scarto era visibile nel
+	sql/VERSION a bordo dell'immagine, che il raccoglitore del core riporta
+	nell'intestazione dello script SQL composto: era l'unico componente
+	disallineato.
+
+	Il salto porta con se' la correzione del 2026-09-01 su
+	BatchJobExecutionParamEntity, dove la colonna identifying e' ora mappata con
+	@JdbcTypeCode(SqlTypes.CHAR): lo schema standard di Spring Batch la dichiara
+	CHAR(1) su tutti i vendor, e con spring.jpa.hibernate.ddl-auto=validate la
+	mappatura precedente faceva fallire l'avvio. Qui non si manifestava, perche'
+	nessun profilo di questo batch imposta validate, ma la mappatura corretta
+	vale comunque.
+
+	L'aggiornamento non e' stato indolore: AbstractBatchController di
+	govpay-common ha cambiato contratto fra le due versioni e BatchController non
+	compilava piu'. Adeguato su due punti:
+
+	  - il costruttore della superclasse richiede ora un EntityManager, che usa
+	    per le query Criteria sullo storico esecuzioni: aggiunto al costruttore e
+	    passato a super();
+	  - sono comparsi due metodi astratti, getDisplayName() e getDescription(),
+	    che alimentano l'endpoint /api/batch/info per un consumer che non conosce
+	    il nome tecnico del job. Implementati entrambi.
+
+	Verifica: mvn clean install verde, 34 test superati, compresi il caricamento
+	del contesto Spring e JobAssemblyIntegrationTest; mvn -Pjar,dist package
+	produce un sql.zip il cui VERSION riporta govpay-common=2.0.4-SNAPSHOT.
+
 2026-09-14  Giuliano Pintori <pintori@link.it>
 
 	* [Docker]
