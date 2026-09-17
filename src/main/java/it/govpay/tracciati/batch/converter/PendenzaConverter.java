@@ -28,11 +28,13 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
+import it.govpay.tracciati.batch.Costanti;
 import it.govpay.tracciati.batch.dto.PendenzaPost;
 import it.govpay.tracciati.batch.dto.Soggetto;
 import it.govpay.tracciati.batch.dto.VocePendenza;
 import it.govpay.tracciati.batch.entity.SingoloVersamento;
 import it.govpay.tracciati.batch.entity.Versamento;
+import it.govpay.tracciati.batch.util.CausaleUtils;
 
 /**
  * Conversione della pendenza di input ({@link PendenzaPost}) nell'entità {@link Versamento}
@@ -51,7 +53,6 @@ import it.govpay.tracciati.batch.entity.Versamento;
 public class PendenzaConverter {
 
 	private static final String DEBITORE_ANONIMO = "ANONIMO";
-	private static final String STATO_VERSAMENTO_NON_ESEGUITO = "NON_ESEGUITO"; // TODO confermare
 	private static final String STATO_PAGAMENTO_NON_PAGATO = "NON_PAGATO";       // TODO confermare
 	private static final String TIPO_VERSAMENTO_DOVUTO = "DOVUTO";               // TODO confermare
 	private static final String STATO_SINGOLO_NON_ESEGUITO = "NON_ESEGUITO";     // TODO confermare
@@ -62,7 +63,8 @@ public class PendenzaConverter {
 
 		v.setCodVersamentoEnte(pendenza.getIdPendenza());
 		v.setNome(pendenza.getNome());
-		v.setCausaleVersamento(pendenza.getCausale());
+		// su GovPay la causale e' memorizzata codificata (causale semplice: "01 <base64>")
+		v.setCausaleVersamento(CausaleUtils.encode(pendenza.getCausale()));
 
 		BigDecimal importo = pendenza.getImporto() != null ? pendenza.getImporto() : sommaVoci(pendenza.getVoci());
 		v.setImportoTotale(importo != null ? importo.doubleValue() : 0d);
@@ -100,7 +102,7 @@ public class PendenzaConverter {
 		v.setSrcDebitoreIdentificativo(v.getDebitoreIdentificativo());
 
 		// Default colonne NOT NULL (vedi TODO in classdoc)
-		v.setStatoVersamento(STATO_VERSAMENTO_NON_ESEGUITO);
+		v.setStatoVersamento(Costanti.STATO_VERSAMENTO_NON_ESEGUITO);
 		v.setStatoPagamento(STATO_PAGAMENTO_NON_PAGATO);
 		v.setTipo(TIPO_VERSAMENTO_DOVUTO);
 		v.setAggiornabile(true);

@@ -17,22 +17,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-package it.govpay.tracciati.batch.stampe;
+package it.govpay.tracciati.batch.repository;
 
-import it.govpay.tracciati.stampe.client.model.Creditor;
-import it.govpay.tracciati.stampe.client.model.Iban;
-import it.govpay.tracciati.stampe.client.model.Languages;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import it.govpay.tracciati.batch.entity.IbanAccredito;
 
 /**
- * Dati dell'avviso derivati dal dominio/IUV (non ricavabili dalla sola posizione debitoria):
- * ente creditore, IBAN, stringa QR pagoPA, logo, lingua, titolo, flag bollettino postale.
+ * Repository dei conti di accredito, usati per il bollettino postale dell'avviso.
  */
-public record DatiAvvisoCreditore(
-		Creditor creditor,
-		Iban iban,
-		String qrcode,
-		byte[] logo,
-		Languages language,
-		String title,
-		Boolean postale) {
+public interface IbanAccreditoRepository extends JpaRepository<IbanAccredito, Long> {
 }

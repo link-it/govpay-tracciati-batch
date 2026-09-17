@@ -19,8 +19,6 @@
  */
 package it.govpay.tracciati.batch.entity;
 
-import java.time.LocalDateTime;
-
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -33,34 +31,44 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * PDF di stampa (avviso) di una posizione debitoria o di un documento (tabella {@code stampe}).
+ * Conto di accredito di un dominio (tabella {@code iban_accredito}). Sull'avviso di pagamento serve
+ * per il bollettino postale: {@code postale} discrimina i conti di Poste Italiane e
+ * {@code autStampaPoste}/{@code intestatario} alimentano autorizzazione e intestazione del conto.
  */
 @Entity
-@Table(name = "stampe")
+@Table(name = "iban_accredito")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Stampa {
+public class IbanAccredito {
 
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Column(name = "id")
 	private Long id;
 
-	@Column(name = "data_creazione", nullable = false)
-	private LocalDateTime dataCreazione;
+	@Column(name = "cod_iban", length = 255, nullable = false)
+	private String codIban;
 
-	@Column(name = "tipo", length = 16, nullable = false)
-	private String tipo;
+	@Column(name = "bic_accredito", length = 255)
+	private String bicAccredito;
 
-	/** Contenuto PDF (BYTEA). */
-	@Column(name = "pdf")
-	private byte[] pdf;
+	@Column(name = "postale", nullable = false)
+	private boolean postale;
 
-	@Column(name = "id_versamento")
-	private Long idVersamento;
+	@Column(name = "abilitato", nullable = false)
+	private boolean abilitato;
 
-	@Column(name = "id_documento")
-	private Long idDocumento;
+	@Column(name = "descrizione", length = 255)
+	private String descrizione;
+
+	@Column(name = "intestatario", length = 255)
+	private String intestatario;
+
+	@Column(name = "aut_stampa_poste", length = 255)
+	private String autStampaPoste;
+
+	@Column(name = "id_dominio", nullable = false)
+	private Long idDominio;
 }
