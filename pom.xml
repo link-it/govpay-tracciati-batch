@@ -154,11 +154,13 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- FreeMarker: trasformazione template CSV -> JSON pendenza (per tipo versamento) -->
+        <!-- FreeMarker: trasformazione template CSV -> JSON pendenza (per tipo versamento).
+             Versione gestita dal govpay-bom (freemarker.version): una versione
+             esplicita qui prevarrebbe sul bom e ne bloccherebbe gli aggiornamenti
+             di sicurezza. -->
         <dependency>
             <groupId>org.freemarker</groupId>
             <artifactId>freemarker</artifactId>
-            <version>2.3.34</version>
         </dependency>
 
         <!-- Test Dependencies -->
