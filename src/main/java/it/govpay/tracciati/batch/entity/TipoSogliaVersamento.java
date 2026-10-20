@@ -17,19 +17,20 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-package it.govpay.tracciati.batch.repository;
-
-import java.util.Optional;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-
-import it.govpay.common.entity.DominioLogoEntity;
+package it.govpay.tracciati.batch.entity;
 
 /**
- * Accesso al logo del dominio (entity di govpay-common) per codice dominio.
- * Repository locale con finder dedicato (il {@code DominioLogoRepository} di common non lo espone).
+ * Tipo di soglia di una posizione debitoria, codificato nel prefisso di {@code versamenti.cod_rata}
+ * (port di {@code it.govpay.model.Versamento.TipoSogliaVersamento}):
+ * <ul>
+ *   <li>{@code ENTRO}/{@code OLTRE}: pagamento ridotto entro/oltre N giorni (seguiti dai giorni);</li>
+ *   <li>{@code RIDOTTO}/{@code SCONTATO}: importi di una violazione al Codice della Strada.</li>
+ * </ul>
  */
-public interface DominioLogoBatchRepository extends JpaRepository<DominioLogoEntity, Long> {
+public enum TipoSogliaVersamento {
 
-	Optional<DominioLogoEntity> findByCodDominio(String codDominio);
+	ENTRO,
+	OLTRE,
+	SCONTATO,
+	RIDOTTO
 }

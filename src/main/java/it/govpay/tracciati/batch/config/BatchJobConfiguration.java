@@ -50,7 +50,10 @@ import it.govpay.tracciati.batch.entity.FormatoTracciato;
 import it.govpay.tracciati.batch.entity.StatoElaborazione;
 import it.govpay.tracciati.batch.entity.Tracciato;
 import it.govpay.tracciati.batch.entity.Versamento;
+import it.govpay.tracciati.batch.stampe.AvvisoDaStampare;
 import it.govpay.tracciati.batch.listener.BatchExecutionRecapListener;
+import it.govpay.tracciati.batch.entity.Documento;
+import it.govpay.tracciati.batch.repository.DocumentoRepository;
 import it.govpay.tracciati.batch.repository.OperazioneRepository;
 import it.govpay.tracciati.batch.repository.TracciatoRepository;
 import it.govpay.tracciati.batch.repository.VersamentoRepository;
@@ -226,12 +229,13 @@ public class BatchJobConfiguration {
 
 	@Bean
 	public Step stampaAvvisiStep(ElaborazioneTracciatoContext context, StampaAvvisoService stampaAvvisoService,
-			VersamentoRepository versamentoRepository, SimpleAsyncTaskExecutor stampeTaskExecutor,
-			ZipStampeStore zipStampeStore) {
+			VersamentoRepository versamentoRepository, DocumentoRepository documentoRepository,
+			SimpleAsyncTaskExecutor stampeTaskExecutor, ZipStampeStore zipStampeStore) {
 		Tasklet tasklet = (contribution, chunkContext) -> {
 			if (context.isPresente() && context.getTracciato().getStato() == StatoElaborazione.IN_STAMPA
 					&& context.getBeanDati().isStampaAvvisi()) {
-				eseguiStampe(context, stampaAvvisoService, versamentoRepository, stampeTaskExecutor, zipStampeStore);
+				eseguiStampe(context, stampaAvvisoService, versamentoRepository, documentoRepository,
+						stampeTaskExecutor, zipStampeStore);
 			}
 			return RepeatStatus.FINISHED;
 		};
@@ -244,8 +248,8 @@ public class BatchJobConfiguration {
 	 * {@code tracciati.zip_stampe} senza copia in memoria (come nella procedura legacy).
 	 */
 	private void eseguiStampe(ElaborazioneTracciatoContext context, StampaAvvisoService stampaAvvisoService,
-			VersamentoRepository versamentoRepository, SimpleAsyncTaskExecutor stampeTaskExecutor,
-			ZipStampeStore zipStampeStore) {
+			VersamentoRepository versamentoRepository, DocumentoRepository documentoRepository,
+			SimpleAsyncTaskExecutor stampeTaskExecutor, ZipStampeStore zipStampeStore) {
 		Tracciato tracciato = context.getTracciato();
 		TracciatoPendenza beanDati = context.getBeanDati();
 		AtomicLong ok = new AtomicLong();
@@ -254,7 +258,10 @@ public class BatchJobConfiguration {
 
 		long byteScritti = zipStampeStore.scrivi(tracciato.getId(), destinazione -> {
 			ZipStampeBuilder zipBuilder = new ZipStampeBuilder(destinazione);
-			aggregaStampe(tracciato, zipBuilder, stampaAvvisoService, versamentoRepository, stampeTaskExecutor, ok, ko);
+			aggregaStampeDocumenti(tracciato, zipBuilder, stampaAvvisoService, versamentoRepository,
+					documentoRepository, stampeTaskExecutor, ok, ko);
+			aggregaStampeSenzaDocumento(tracciato, zipBuilder, stampaAvvisoService, versamentoRepository,
+					stampeTaskExecutor, ok, ko);
 			zipBuilder.chiudi();
 			avvisiNelloZip.set(zipBuilder.getNumeroPdf());
 		});
@@ -266,38 +273,80 @@ public class BatchJobConfiguration {
 	}
 
 	/**
-	 * Produce i PDF in parallelo (lotti da {@code stampeChunkSize} sul pool stampe) e li aggiunge allo
-	 * ZIP in modo sequenziale (lo ZIP non è thread-safe), come nella procedura legacy.
+	 * Un avviso per documento, con tutte le rate caricate dal tracciato: è il raggruppamento che il
+	 * vecchio flusso otteneva stampando il documento intero per ogni rata e deduplicando i PDF.
 	 */
-	private void aggregaStampe(Tracciato tracciato, ZipStampeBuilder zipBuilder,
+	private void aggregaStampeDocumenti(Tracciato tracciato, ZipStampeBuilder zipBuilder,
+			StampaAvvisoService stampaAvvisoService, VersamentoRepository versamentoRepository,
+			DocumentoRepository documentoRepository, SimpleAsyncTaskExecutor stampeTaskExecutor,
+			AtomicLong ok, AtomicLong ko) throws IOException {
+		int pagina = 0;
+		List<Long> idDocumenti;
+		do {
+			idDocumenti = versamentoRepository.findIdDocumentiDaStampare(tracciato.getId(),
+					PageRequest.of(pagina, PAGE_SIZE_STAMPE));
+			List<AvvisoDaStampare> avvisi = new ArrayList<>();
+			for (Long idDocumento : idDocumenti) {
+				List<Versamento> rate = versamentoRepository.findVersamentiDocumentoDaStampare(tracciato.getId(),
+						idDocumento, Costanti.STATO_VERSAMENTO_NON_ESEGUITO);
+				if (rate.isEmpty()) {
+					continue;
+				}
+				Documento documento = documentoRepository.findById(idDocumento).orElse(null);
+				avvisi.add(AvvisoDaStampare.diDocumento(documento, rate));
+			}
+			stampaLotti(avvisi, zipBuilder, stampaAvvisoService, stampeTaskExecutor, ok, ko);
+			pagina++;
+		} while (idDocumenti.size() == PAGE_SIZE_STAMPE);
+	}
+
+	/** Un avviso per posizione, per le pendenze che non appartengono a un documento. */
+	private void aggregaStampeSenzaDocumento(Tracciato tracciato, ZipStampeBuilder zipBuilder,
 			StampaAvvisoService stampaAvvisoService, VersamentoRepository versamentoRepository,
 			SimpleAsyncTaskExecutor stampeTaskExecutor, AtomicLong ok, AtomicLong ko) throws IOException {
-		int lotto = this.batchProperties.getStampeChunkSize();
 		int pagina = 0;
 		List<Versamento> versamenti;
 		do {
-			versamenti = versamentoRepository.findVersamentiDaStampare(tracciato.getId(), PageRequest.of(pagina, PAGE_SIZE_STAMPE));
-
-			// produzione PDF in parallelo per lotti
-			List<CompletableFuture<List<RisultatoStampa>>> futures = new ArrayList<>();
-			for (int i = 0; i < versamenti.size(); i += lotto) {
-				List<Versamento> sottoInsieme = List.copyOf(versamenti.subList(i, Math.min(i + lotto, versamenti.size())));
-				futures.add(CompletableFuture.supplyAsync(
-						() -> sottoInsieme.stream().map(stampaAvvisoService::stampa).toList(), stampeTaskExecutor));
-			}
-			// aggregazione sequenziale nello ZIP
-			for (CompletableFuture<List<RisultatoStampa>> future : futures) {
-				for (RisultatoStampa risultato : future.join()) {
-					if (risultato.ok()) {
-						ok.incrementAndGet();
-					} else {
-						ko.incrementAndGet();
-					}
-					zipBuilder.aggiungi(risultato);
-				}
-			}
+			versamenti = versamentoRepository.findVersamentiSenzaDocumentoDaStampare(tracciato.getId(),
+					PageRequest.of(pagina, PAGE_SIZE_STAMPE));
+			List<AvvisoDaStampare> avvisi = versamenti.stream().map(AvvisoDaStampare::diVersamento).toList();
+			stampaLotti(avvisi, zipBuilder, stampaAvvisoService, stampeTaskExecutor, ok, ko);
 			pagina++;
 		} while (versamenti.size() == PAGE_SIZE_STAMPE);
+	}
+
+	/**
+	 * Produce i PDF in parallelo (lotti da {@code stampeChunkSize} sul pool stampe) e li aggiunge allo
+	 * ZIP in modo sequenziale (lo ZIP non è thread-safe), come nella procedura legacy. I contatori
+	 * sono per posizione debitoria, non per PDF, per restare confrontabili con {@code numStampeTotali}.
+	 */
+	private void stampaLotti(List<AvvisoDaStampare> avvisi, ZipStampeBuilder zipBuilder,
+			StampaAvvisoService stampaAvvisoService, SimpleAsyncTaskExecutor stampeTaskExecutor,
+			AtomicLong ok, AtomicLong ko) throws IOException {
+		if (avvisi.isEmpty()) {
+			return;
+		}
+		int lotto = this.batchProperties.getStampeChunkSize();
+		List<CompletableFuture<List<RisultatoStampa>>> futures = new ArrayList<>();
+		for (int i = 0; i < avvisi.size(); i += lotto) {
+			List<AvvisoDaStampare> sottoInsieme = List.copyOf(avvisi.subList(i, Math.min(i + lotto, avvisi.size())));
+			futures.add(CompletableFuture.supplyAsync(
+					() -> sottoInsieme.stream().map(stampaAvvisoService::stampa).toList(), stampeTaskExecutor));
+		}
+
+		int indice = 0;
+		for (CompletableFuture<List<RisultatoStampa>> future : futures) {
+			for (RisultatoStampa risultato : future.join()) {
+				long posizioni = avvisi.get(indice).versamenti().size();
+				if (risultato.ok()) {
+					ok.addAndGet(posizioni);
+				} else {
+					ko.addAndGet(posizioni);
+				}
+				zipBuilder.aggiungi(risultato);
+				indice++;
+			}
+		}
 	}
 
 	// ── Step 5: finalizzazione (COMPLETATO dopo la stampa) ───────────────────

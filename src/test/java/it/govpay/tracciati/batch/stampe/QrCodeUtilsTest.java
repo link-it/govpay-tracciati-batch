@@ -32,6 +32,15 @@ class QrCodeUtilsTest {
 	}
 
 	@Test
+	void importoSottoDieciEuroConservaLoZeroDiRiempimento() {
+		// il legacy formatta con DecimalFormat("00.00"): 5,00 euro diventa 0500, non 500
+		assertEquals("PAGOPA|002|300000000000000001|00000000000|0500",
+				QrCodeUtils.buildQrCodePagoPa("300000000000000001", "00000000000", 5.0));
+		assertEquals("PAGOPA|002|300000000000000001|00000000000|0550",
+				QrCodeUtils.buildQrCodePagoPa("300000000000000001", "00000000000", 5.5));
+	}
+
+	@Test
 	void importoInteroInCentesimi() {
 		assertEquals("PAGOPA|002|300000000000000001|00000000000|100000",
 				QrCodeUtils.buildQrCodePagoPa("300000000000000001", "00000000000", 1000.0));

@@ -30,4 +30,7 @@ public class Costanti {
 
 	/** Nome del job Spring Batch di elaborazione dei tracciati di caricamento pendenze. */
 	public static final String ELABORAZIONE_TRACCIATI_PENDENZE_JOB_NAME = "elaborazioneTracciatiPendenzeJob";
+
+	/** Stato di una posizione debitoria non ancora pagata: è quella per cui si stampa l'avviso. */
+	public static final String STATO_VERSAMENTO_NON_ESEGUITO = "NON_ESEGUITO";
 }

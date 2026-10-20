@@ -22,15 +22,10 @@ package it.govpay.tracciati.batch.stampe;
 import it.govpay.tracciati.batch.entity.Versamento;
 
 /**
- * Risolve i dati dell'avviso non presenti sulla posizione debitoria: ente creditore (ragione
- * sociale, codice fiscale, loghi), IBAN e stringa QR pagoPA.
- *
- * <p><b>Seam architetturale (Punto 8):</b> l'implementazione concreta legge il dominio
- * ({@code DominioEntity} di govpay-common) e compone il QR pagoPA dall'IUV/numero avviso.
- * Richiede l'anagrafica del dominio e la logica di composizione QR; è la parte da completare
- * insieme a {@code CaricamentoService}.</p>
+ * Risolve i dati dell'ente creditore non presenti sulla posizione debitoria: anagrafica del
+ * dominio/unità operativa e loghi.
  */
-public interface DatiAvvisoResolver {
+public interface DatiCreditoreResolver {
 
-	DatiAvvisoCreditore risolvi(Versamento versamento);
+	DatiCreditore risolvi(Versamento versamento);
 }

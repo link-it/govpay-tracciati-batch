@@ -17,20 +17,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
-package it.govpay.tracciati.batch.repository;
+package it.govpay.tracciati.batch.stampe;
 
-import java.util.Optional;
-
-import org.springframework.data.jpa.repository.JpaRepository;
-
-import it.govpay.tracciati.batch.entity.Stampa;
+import it.govpay.tracciati.stampe.client.model.Creditor;
 
 /**
- * Repository delle stampe (PDF avvisi).
+ * Dati dell'ente creditore per l'avviso: anagrafica (dominio + unità operativa), logo dell'ente e
+ * logo secondario delle pendenze multibeneficiario.
  */
-public interface StampaRepository extends JpaRepository<Stampa, Long> {
-
-	Optional<Stampa> findByIdVersamento(Long idVersamento);
-
-	Optional<Stampa> findByIdDocumento(Long idDocumento);
+public record DatiCreditore(Creditor creditor, byte[] logo, byte[] logoSecondario) {
 }
