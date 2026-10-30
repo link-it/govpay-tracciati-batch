@@ -218,54 +218,7 @@ Non sono necessarie variabili d'ambiente per abilitare o configurare il GDE.
 
 ## Configuration Reference
 
-### Variabili d'Ambiente - Database
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GOVPAY_DB_TYPE` | **Yes** | - | Tipo database: `postgresql`, `mysql`, `mariadb`, `oracle` |
-| `GOVPAY_DB_SERVER` | **Yes** | - | Server database nel formato `host:porta` |
-| `GOVPAY_DB_NAME` | **Yes** | - | Nome del database o service name |
-| `GOVPAY_DB_USER` | **Yes** | - | Username del database |
-| `GOVPAY_DB_PASSWORD` | **Yes** | - | Password del database |
-| `GOVPAY_DS_CONN_PARAM` | No | - | Parametri aggiuntivi URL JDBC (es: `sslmode=require`) |
-| `GOVPAY_ORACLE_JDBC_URL_TYPE` | No | `servicename` | Oracle: `servicename` o `sid` |
-| `GOVPAY_TRACCIATI_MIN_POOL` | No | `2` | Connessioni minime pool HikariCP |
-| `GOVPAY_TRACCIATI_MAX_POOL` | No | `10` | Connessioni massime pool HikariCP |
-| `GOVPAY_DS_JDBC_LIBS` | No | `/opt/jdbc-drivers` | Percorso driver JDBC |
-
-### Variabili d'Ambiente - Modalità Deployment
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GOVPAY_TRACCIATI_BATCH_USA_CRON` | No | `false` | Modalità CRON: `true`, `si`, `yes`, `1` |
-| `GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON` | No | `5` | Intervallo scheduler in minuti (modalità CRON) |
-| `SERVER_PORT` | No | `10001` | Porta Actuator (modalità CRON) |
-
-### Variabili d'Ambiente - Inizializzazione Database
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GOVPAY_TRACCIATI_POP_DB_SKIP` | No | `TRUE` | Salta inizializzazione DB: `TRUE`/`FALSE` |
-| `GOVPAY_TRACCIATI_DB_CHECK_TABLE` | No | `batch_job_execution_context` | Tabella per readiness check |
-| `GOVPAY_TRACCIATI_LIVE_DB_CHECK_SKIP` | No | `FALSE` | Salta liveness check (TCP) |
-| `GOVPAY_TRACCIATI_LIVE_DB_CHECK_MAX_RETRY` | No | `30` | Tentativi max liveness check |
-| `GOVPAY_TRACCIATI_LIVE_DB_CHECK_SLEEP_TIME` | No | `2` | Secondi tra tentativi liveness |
-| `GOVPAY_TRACCIATI_LIVE_DB_CHECK_CONNECT_TIMEOUT` | No | `5` | Timeout connessione TCP (secondi) |
-| `GOVPAY_TRACCIATI_READY_DB_CHECK_SKIP` | No | `FALSE` | Salta readiness check (tabelle) |
-| `GOVPAY_TRACCIATI_READY_DB_CHECK_MAX_RETRY` | No | `5` | Tentativi max readiness check |
-| `GOVPAY_TRACCIATI_READY_DB_CHECK_SLEEP_TIME` | No | `2` | Secondi tra tentativi readiness |
-
-### Variabili d'Ambiente - JVM Memory
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `GOVPAY_TRACCIATI_JVM_MAX_RAM_PERCENTAGE` | No | `80` | Percentuale RAM massima utilizzabile dalla JVM |
-| `GOVPAY_TRACCIATI_JVM_INITIAL_RAM_PERCENTAGE` | No | - | Percentuale RAM iniziale |
-| `GOVPAY_TRACCIATI_JVM_MIN_RAM_PERCENTAGE` | No | - | Percentuale RAM minima |
-| `GOVPAY_TRACCIATI_JVM_MAX_METASPACE_SIZE` | No | - | Dimensione max Metaspace (es: `256m`) |
-| `GOVPAY_TRACCIATI_JVM_MAX_DIRECT_MEMORY_SIZE` | No | - | Dimensione max Direct Memory (es: `128m`) |
-| `JAVA_OPTS` | No | - | Opzioni aggiuntive JVM |
-
+L'elenco completo delle variabili d'ambiente dell'immagine, con default e descrizione, è nel README del progetto: [Esecuzione con Docker](../README.md#esecuzione-con-docker). Le proprietà applicative sono descritte in [Configurazione](../README.md#configurazione).
 
 ### Health Check
 
