@@ -20,7 +20,7 @@ I tracciati sono caricati in GovPay dall'API Backoffice (`POST /pendenze/traccia
 
 Il job si avvia da uno scheduler interno (modalità di default), una sola volta con il profilo `cron`, oppure a richiesta con l'API REST descritta in [Avvio manuale via REST](#avvio-manuale-via-rest). Le esecuzioni sono coordinate tra più nodi tramite i metadati Spring Batch sul database.
 
-> **Stato dello sviluppo.** Su `main` il caricamento vero e proprio non è ancora implementato: `CaricamentoService` ha solo un'implementazione segnaposto (`SeamStubConfiguration`) che restituisce esito negativo per ogni pendenza, e i tracciati in formato CSV fanno fallire l'esecuzione (`UnsupportedOperationException`). Il batch non va quindi ancora attivato al posto dell'elaborazione del monolite. Il lavoro in corso è sui rami di sviluppo del repository.
+> **Stato dello sviluppo.** Su `main` il caricamento vero e proprio non è ancora implementato: `CaricamentoService` ha solo un'implementazione segnaposto (`SeamStubConfiguration`) che restituisce esito negativo per ogni pendenza, e i tracciati in formato CSV non sono supportati (l'esecuzione fallisce e il tracciato viene scartato). Il batch non va quindi ancora attivato al posto dell'elaborazione del monolite. Il lavoro in corso è sui rami di sviluppo del repository.
 
 Storico delle modifiche nel [ChangeLog](ChangeLog).
 
@@ -45,13 +45,14 @@ Le modifiche ai livelli di log fatte dalla console (riga `log_level` della tabel
 Requisiti: JDK 21 e Maven 3.8.1 o successivo.
 
 ```bash
-mvn clean install
+mvn clean install -P jar     # fat jar, per esecuzione standalone e container (profilo di default)
+mvn clean install -P war     # war, per il deploy su application server
 ```
 
-Il risultato è il fat jar `target/govpay-tracciati-batch.jar`. La build esegue i test e l'analisi OWASP Dependency-Check delle dipendenze; per escludere l'analisi OWASP, per esempio in sviluppo:
+Il profilo sceglie il packaging; il risultato è in `target/govpay-tracciati-batch.jar` o `target/govpay-tracciati-batch.war`. In entrambi i casi i driver JDBC non sono inclusi. La build esegue i test e l'analisi OWASP Dependency-Check delle dipendenze; per escludere l'analisi OWASP, per esempio in sviluppo:
 
 ```bash
-mvn clean install -Dowasp.phase=none
+mvn clean install -P jar -Dowasp.phase=none
 ```
 
 Per produrre anche `target/sql.zip`, con lo schema Spring Batch per ogni database e gli script di svecchiamento dei metadati, usato dall'immagine Docker e allegato alle release:
@@ -60,7 +61,7 @@ Per produrre anche `target/sql.zip`, con lo schema Spring Batch per ogni databas
 mvn clean install -Pjar,dist
 ```
 
-Il profilo `jar` va indicato insieme a `dist`: è quello che lascia i driver JDBC fuori dal jar. Il pom contiene anche un profilo `war`, che però non produce un war: il packaging è fisso a `jar` e l'applicazione non estende `SpringBootServletInitializer`.
+Il profilo `jar` va indicato insieme a `dist`: è quello che lascia i driver JDBC fuori dal jar.
 
 ## Configurazione
 
@@ -77,10 +78,6 @@ Le proprietà si impostano in `application.properties`, da riga di comando (`-D<
 | `govpay.batch.stampe-chunk-size` | `GOVPAY_BATCH_STAMPECHUNKSIZE` | `100` | Avvisi per lotto di stampa; i lotti sono elaborati in parallelo |
 | `govpay.batch.stampe-pool-size` | `GOVPAY_BATCH_STAMPEPOOLSIZE` | `10` | Lotti di stampa elaborati in parallelo |
 | `govpay.batch.modalita-zip-stampe` | `GOVPAY_BATCH_MODALITAZIPSTAMPE` | `AUTO` | Scrittura dello ZIP degli avvisi in `tracciati.zip_stampe`: `AUTO` (dedotta dal database), `LARGE_OBJECT` (OID PostgreSQL), `BLOB` |
-| `govpay.batch.thread-pool-size` | `GOVPAY_BATCH_THREADPOOLSIZE` | `10` | Non letta: il parallelismo si regola con `caricamento-pool-size` e `stampe-pool-size` |
-| `govpay.batch.enabled` | `GOVPAY_BATCH_ENABLED` | `true` | Letta in `BatchProperties` ma non usata: per non schedulare il job usare il profilo `cron` o un profilo diverso da `default` |
-| `govpay.batch.skip-limit` | `GOVPAY_BATCH_SKIPLIMIT` | `10` | Letta in `BatchProperties` ma non usata |
-| `govpay.batch.max-retries` | `GOVPAY_BATCH_MAXRETRIES` | `3` | Letta in `BatchProperties` ma non usata |
 
 ### Stampa degli avvisi
 
@@ -123,7 +120,8 @@ URL e autenticazione del GDE non sono proprietà del batch: sono nel connettore 
 
 | Proprietà | Variabile d'ambiente | Default | Descrizione |
 |-----------|----------------------|---------|-------------|
-| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | - | URL JDBC del database di GovPay (obbligatoria) |
+| `spring.datasource.url` | `SPRING_DATASOURCE_URL` | - | URL JDBC del database di GovPay (obbligatoria con il jar) |
+| `spring.datasource.jndi-name` | `SPRING_DATASOURCE_JNDINAME` | - | Nome JNDI del datasource, per il deploy del war su application server (es. `java:comp/env/jdbc/govpay`); se impostata, le altre proprietà `spring.datasource.*` sono ignorate |
 | `spring.datasource.username` | `SPRING_DATASOURCE_USERNAME` | - | Utente del database |
 | `spring.datasource.password` | `SPRING_DATASOURCE_PASSWORD` | - | Password del database |
 | `spring.datasource.driver-class-name` | `SPRING_DATASOURCE_DRIVERCLASSNAME` | dedotto dall'URL | Classe del driver JDBC |
@@ -136,7 +134,7 @@ URL e autenticazione del GDE non sono proprietà del batch: sono nel connettore 
 | `spring.datasource.hikari.idle-timeout` | `SPRING_DATASOURCE_HIKARI_IDLETIMEOUT` | `600000` (`10000` nel container) | Tempo dopo cui una connessione inattiva viene chiusa, in ms |
 | `spring.datasource.hikari.max-lifetime` | `SPRING_DATASOURCE_HIKARI_MAXLIFETIME` | `1800000` (`600000` nel container) | Durata massima di una connessione, in ms |
 
-I driver JDBC non sono inclusi nel jar: vedi [Esecuzione](#esecuzione). Su PostgreSQL lo ZIP degli avvisi è scritto come Large Object, sugli altri database come Blob; il progressivo IUV, quando il caricamento sarà implementato, userà la tabella `ID_MESSAGGIO_RELATIVO` di GovPay.
+I driver JDBC non sono inclusi né nel jar né nel war: vedi [Esecuzione](#esecuzione). Su PostgreSQL lo ZIP degli avvisi è scritto come Large Object, sugli altri database come Blob; il progressivo IUV, quando il caricamento sarà implementato, userà la tabella `ID_MESSAGGIO_RELATIVO` di GovPay.
 
 ### Logging
 
@@ -216,6 +214,28 @@ java -Dloader.path=./jdbc-drivers \
      -jar target/govpay-tracciati-batch.jar --spring.profiles.active=cron
 ```
 
+### War su application server
+
+Il war si produce con `mvn clean install -P war` (`target/govpay-tracciati-batch.war`): non è allegato alle release né incluso nell'immagine Docker. Richiede un application server Jakarta EE 11 (Servlet 6.1), per esempio Tomcat 11.
+
+Il war usa il datasource dell'application server, indicato con `spring.datasource.jndi-name`; il driver JDBC va nelle librerie dell'application server. Le altre proprietà si passano come proprietà di sistema della JVM o variabili d'ambiente. Esempio per Tomcat, con il datasource definito in `conf/context.xml`:
+
+```xml
+<Resource name="jdbc/govpay" auth="Container" type="javax.sql.DataSource"
+          driverClassName="org.postgresql.Driver"
+          url="jdbc:postgresql://localhost:5432/govpay"
+          username="govpay" password="<password>" maxTotal="10"/>
+```
+
+```bash
+export CATALINA_OPTS="-Dspring.datasource.jndi-name=java:comp/env/jdbc/govpay -Dgovpay.tracciati.stampe.base-url=http://localhost:8081"
+cp target/govpay-tracciati-batch.war $CATALINA_BASE/webapps/
+```
+
+Il batch gira con lo scheduler interno; API REST e actuator rispondono sotto il context path del war (es. `http://localhost:8080/govpay-tracciati-batch/actuator/health`).
+
+### Profilo di sviluppo
+
 Il profilo `local` (`application-local.properties`) serve allo sviluppo: database PostgreSQL su `localhost`, nessun server HTTP, SQL e log di debug.
 
 ## Esecuzione con Docker
@@ -250,7 +270,8 @@ Variabili d'ambiente dell'immagine, oltre alle proprietà Spring Boot in forma d
 | `GOVPAY_TRACCIATI_MIN_POOL` | no | `2` | Connessioni minime inattive del pool |
 | `GOVPAY_TRACCIATI_MAX_POOL` | no | `10` | Connessioni massime del pool |
 | `GOVPAY_TRACCIATI_BATCH_USA_CRON` | no | - | `true`, `si`, `yes` o `1`: esecuzione singola con il profilo `cron`, senza server HTTP; il container termina a fine job e va pianificato dall'esterno (es. CronJob Kubernetes). Altrimenti scheduler interno |
-| `GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON` | no | `120` | Minuti tra un'esecuzione e l'altra con lo scheduler interno. **Oggi senza effetto**: l'entrypoint la converte in `SCHEDULER_TRACCIATIJOB_FIXEDDELAYSTRING`, che il batch non legge; l'intervallo resta di 60 secondi. Per cambiarlo usare `SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING` (in ms) |
+| `GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON` | no | - | Minuti tra un'esecuzione e l'altra con lo scheduler interno; l'entrypoint li converte in millisecondi in `SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING`. Deve essere un intero maggiore di zero, altrimenti il container non parte. Se non è impostata vale l'intervallo dell'applicazione, 60 secondi |
+| `SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING` | no | `60000` | Intervallo in millisecondi: se impostata ha la precedenza su `GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON`, che viene ignorata con un avviso |
 | `SERVER_PORT` | no | `10001` | Porta HTTP con lo scheduler interno |
 | `MANAGEMENT_SERVER_PORT` | no | porta del servizio | Porta dedicata agli endpoint actuator |
 | `MANAGEMENT_ENDPOINTS` | no | `health,info,metrics,prometheus` | Endpoint actuator esposti |
@@ -261,7 +282,7 @@ Variabili d'ambiente dell'immagine, oltre alle proprietà Spring Boot in forma d
 | `GOVPAY_TRACCIATI_LIVE_DB_CHECK_MAX_RETRY` | no | `30` | Tentativi di connessione alla porta del database |
 | `GOVPAY_TRACCIATI_LIVE_DB_CHECK_SLEEP_TIME` | no | `2` | Secondi tra un tentativo e l'altro |
 | `GOVPAY_TRACCIATI_LIVE_DB_CHECK_CONNECT_TIMEOUT` | no | `5` | Timeout di ogni tentativo di connessione, in secondi |
-| `GOVPAY_TRACCIATI_READY_DB_CHECK_SKIP` | no | `FALSE` | Salta la verifica della tabella. Oggi con `TRUE` l'inizializzazione fallisce: il client SQL è configurato solo dentro la verifica |
+| `GOVPAY_TRACCIATI_READY_DB_CHECK_SKIP` | no | `FALSE` | Salta la verifica della tabella e crea comunque lo schema |
 | `GOVPAY_TRACCIATI_READY_DB_CHECK_MAX_RETRY` | no | `5` | Tentativi della verifica della tabella |
 | `GOVPAY_TRACCIATI_READY_DB_CHECK_SLEEP_TIME` | no | `2` | Secondi tra un tentativo e l'altro |
 | `GOVPAY_TRACCIATI_JVM_MAX_RAM_PERCENTAGE` | no | `80` | `-XX:MaxRAMPercentage` della JVM |
@@ -273,13 +294,13 @@ Variabili d'ambiente dell'immagine, oltre alle proprietà Spring Boot in forma d
 
 L'identificativo del nodo (`govpay.batch.cluster-id`) è impostato dall'entrypoint, con la variabile `GOVPAY_BATCH_CLUSTER_ID`, all'indirizzo IP del container o al suo hostname se l'IP non si ricava: un valore passato dall'esterno viene sovrascritto. Le altre variabili che compaiono negli script dell'immagine (es. `INTERVALLO_MINUTI`, `HSQLDB_SHA256`) sono interne e non vanno impostate.
 
-Il Dockerfile imposta anche, con `ENV`, i valori del container indicati in [Configurazione](#configurazione) (pool Hikari, file di log) e alcune variabili senza effetto su questo batch: `GOVPAY_BATCH_PAGE_SIZE`, `GOVPAY_BATCH_THREAD_POOL_SIZE`, `GOVPAY_BATCH_HEADERS_CHUNK_SIZE`, `GOVPAY_BATCH_METADATA_CHUNK_SIZE`, `GOVPAY_BATCH_PAYMENTS_CHUNK_SIZE`, `LOGGING_DIRECTORYPATH` e `LOGGING_FILEPREFIX` non corrispondono a proprietà lette, mentre `GOVPAY_BATCH_ENABLED`, `GOVPAY_BATCH_SKIP_LIMIT` e `GOVPAY_BATCH_MAX_RETRIES` sono lette ma non usate. Il log di avvio dell'entrypoint è in `/tmp/entrypoint_debug.log` dentro il container.
+Il Dockerfile imposta anche, con `ENV`, i valori del container indicati in [Configurazione](#configurazione) (pool Hikari, file di log). I messaggi dell'entrypoint e i log dell'applicazione escono sui log del container (`docker logs`); il log applicativo è scritto anche in `/var/log/govpay-tracciati/govpay-tracciati.log`.
 
 Costruzione dell'immagine in locale, scansione delle vulnerabilità e pacchetti inclusi sono descritti in [docker/DOCKER.md](docker/DOCKER.md) e [docker/SCANSIONE.md](docker/SCANSIONE.md).
 
 ## Monitoraggio
 
-Con lo scheduler interno gli endpoint actuator rispondono di default sulla porta del servizio (`8080` con il jar, `10001` nel container):
+Con lo scheduler interno gli endpoint actuator rispondono di default sulla porta del servizio (`8080` con il jar, `10001` nel container; con il war, sotto il context path dell'applicazione):
 
 ```bash
 curl http://localhost:10001/actuator/health       # stato, compresa la connessione al database
@@ -326,7 +347,7 @@ Il job `elaborazioneTracciatiPendenzeJob` ha cinque step, ciascuno con una guard
 | `stampaAvvisiStep` | stato `IN_STAMPA` e stampa richiesta | Chiede a govpay-stampe-api il PDF di ogni pendenza caricata con numero avviso, in lotti paralleli di `stampe-chunk-size`; salva ogni PDF in `stampe` e scrive lo ZIP di tutti gli avvisi in `tracciati.zip_stampe` in streaming. Una stampa fallita è contata come KO e non interrompe lo step |
 | `finalizzazioneStep` | stato `IN_STAMPA` | Porta il tracciato a `COMPLETATO` |
 
-A fine elaborazione il batch incrementa la metrica `govpay.tracciati.completati` e invia l'evento al GDE. Se un'esecuzione fallisce il tracciato resta nello stato in cui si trova e viene ripreso dall'esecuzione successiva.
+A fine elaborazione il batch incrementa la metrica `govpay.tracciati.completati` e invia l'evento `OK` al GDE. Se un'esecuzione fallisce, il tracciato viene scartato come nella procedura del monolite: stato `SCARTATO`, causa dell'errore in `descrizione_stato` e nel `bean_dati`, metrica `govpay.tracciati.scartati` ed evento `KO` al GDE; le esecuzioni successive passano al tracciato seguente. Se non si riesce nemmeno a scartarlo, per esempio perché il database non è raggiungibile, il tracciato resta nello stato in cui si trova e viene ripreso all'esecuzione successiva. Un'esecuzione interrotta senza errore (arresto del processo, esecuzione bloccata superata da un altro nodo) riprende invece dal punto in cui era rimasta.
 
 ## Licenza
 
