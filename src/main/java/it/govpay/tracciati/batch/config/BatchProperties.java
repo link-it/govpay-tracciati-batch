@@ -37,15 +37,6 @@ import lombok.Data;
 @Data
 public class BatchProperties {
 
-	/** Abilita/disabilita l'elaborazione batch. */
-	private boolean enabled = true;
-
-	/** Numero di operazioni saltabili (skip) prima di far fallire lo step. */
-	private int skipLimit = 10;
-
-	/** Numero massimo di retry per errori transitori (lock DB, timeout HTTP stampe). */
-	private int maxRetries = 3;
-
 	// ── Caricamento pendenze ─────────────────────────────────────────────
 	/** Dimensione del pool di thread per il caricamento (legacy: it.govpay.thread.pool.caricamentoTracciati). */
 	private int caricamentoPoolSize = 10;
