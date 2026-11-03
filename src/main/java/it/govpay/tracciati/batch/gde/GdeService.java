@@ -35,6 +35,7 @@ import it.govpay.common.configurazione.model.Giornale;
 import it.govpay.common.configurazione.service.ConfigurazioneService;
 import it.govpay.common.gde.AbstractGdeService;
 import it.govpay.common.gde.GdeEventInfo;
+import it.govpay.tracciati.batch.config.BatchInfraConfig;
 import it.govpay.tracciati.batch.entity.Tracciato;
 import it.govpay.gde.client.beans.CategoriaEvento;
 import it.govpay.gde.client.beans.ComponenteEvento;
@@ -60,7 +61,7 @@ public class GdeService extends AbstractGdeService {
 	public GdeService(ObjectMapper objectMapper,
 			@Qualifier("asyncHttpExecutor") Executor asyncHttpExecutor,
 			ConfigurazioneService configurazioneService,
-			@Value("${govpay.batch.cluster-id:GovPay-Tracciati-Batch}") String clusterId) {
+			@Value(BatchInfraConfig.CLUSTER_ID) String clusterId) {
 		super(objectMapper, asyncHttpExecutor, configurazioneService);
 		this.configurazioneService = configurazioneService;
 		this.clusterId = clusterId;
