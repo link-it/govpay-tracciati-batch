@@ -92,6 +92,7 @@ Le proprietà si impostano in `application.properties`, da riga di comando (`-D<
 
 | Proprietà | Variabile d'ambiente | Default | Descrizione |
 |-----------|----------------------|---------|-------------|
+| `govpay.batch.enabled` | `GOVPAY_BATCH_ENABLED` | `true` | Con `false` lo scheduler interno non avvia il job (all'avvio il log lo segnala); `/run` e il profilo `cron` restano disponibili. Nel profilo `cron` non ha effetto |
 | `govpay.batch.cluster-id` | `GOVPAY_BATCH_CLUSTERID` | `GovPay-Tracciati-Batch` | Identificativo del nodo, registrato nelle esecuzioni e negli eventi GDE; nel container è l'indirizzo IP |
 | `govpay.batch.stale-threshold-minutes` | `GOVPAY_BATCH_STALETHRESHOLDMINUTES` | `120` | Minuti senza aggiornamenti dopo cui un'esecuzione in corso è considerata bloccata e può essere superata |
 | `govpay.batch.time-zone` | `GOVPAY_BATCH_TIMEZONE` | `Europe/Rome` | Fuso orario di default della JVM e delle date delle esecuzioni |
