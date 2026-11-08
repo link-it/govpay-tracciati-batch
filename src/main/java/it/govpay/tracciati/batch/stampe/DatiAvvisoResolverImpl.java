@@ -75,13 +75,27 @@ public class DatiAvvisoResolverImpl implements DatiAvvisoResolver {
 		Creditor creditor = new Creditor()
 				.fiscalCode(codDominio)
 				.businessName(tronca(dominio.getRagioneSociale()))
-				.cbillCode(dominio.getCbill());
+				.cbillCode(dominio.getCbill())
+				.payOnWebsite(consentePagamentoSulSito(dominio));
 
 		byte[] logo = risolviLogo(codDominio);
 		String qrcode = QrCodeUtils.buildQrCodePagoPa(versamento.getNumeroAvviso(), codDominio, versamento.getImportoTotale());
 		boolean postale = dominio.getAutStampaPoste() != null && !dominio.getAutStampaPoste().isBlank();
 
 		return new DatiAvvisoCreditore(creditor, null, qrcode, logo, Languages.IT, null, postale);
+	}
+
+	/**
+	 * Indica se l'avviso si può pagare anche dal sito dell'ente ({@code creditor.pay_on_website}):
+	 * con {@code true} govpay-stampe-api stampa "oppure sul sito di &lt;ente&gt;, ...", altrimenti
+	 * "oppure dal tuo Home Banking, ..." (specifica pagoPA 3.5).
+	 *
+	 * <p>Il dato sarà una colonna della tabella {@code domini}, in arrivo con lo schema GovPay 3.11.x:
+	 * finché non è disponibile in {@link DominioEntity} si restituisce {@code false}, la variante
+	 * "senza sito" della specifica.</p>
+	 */
+	boolean consentePagamentoSulSito(DominioEntity dominio) {
+		return false;
 	}
 
 	private byte[] risolviLogo(String codDominio) {
