@@ -36,11 +36,21 @@ import it.govpay.common.batch.service.JobConcurrencyService;
  *   <li>{@link JobConcurrencyService} — prevenzione esecuzione concorrente e gestione job stale;</li>
  *   <li>{@link JobExecutionHelper} — esecuzione job con parametri standard e controllo pre-esecuzione.</li>
  * </ul>
- * Il lock/lease multi-nodo si appoggia alle tabelle {@code BATCH_*} di Spring Batch e alle
- * proprietà {@code govpay.batch.cluster-id} e {@code govpay.batch.stale-threshold-minutes}.
+ * Il lock/lease multi-nodo si appoggia alle tabelle {@code BATCH_*} di Spring Batch, al
+ * cluster-id del nodo ({@link #CLUSTER_ID}) e alla proprietà
+ * {@code govpay.batch.stale-threshold-minutes}.
  */
 @Configuration
 public class BatchInfraConfig {
+
+	/**
+	 * Cluster-id del nodo: {@code govpay.batch.cluster-id} (o la variabile
+	 * {@code GOVPAY_BATCH_CLUSTER_ID}) se impostata, altrimenti l'identificativo
+	 * dell'host ({@link it.govpay.common.batch.config.ClusterIdPredefinito}).
+	 * Deve essere diverso su ogni nodo (govpay-common#36).
+	 */
+	public static final String CLUSTER_ID =
+			"${govpay.batch.cluster-id:#{T(it.govpay.common.batch.config.ClusterIdPredefinito).valore()}}";
 
 	@Bean
 	public JobConcurrencyService jobConcurrencyService(
@@ -53,7 +63,7 @@ public class BatchInfraConfig {
 	public JobExecutionHelper jobExecutionHelper(
 			JobOperator jobOperator,
 			JobConcurrencyService jobConcurrencyService,
-			@Value("${govpay.batch.cluster-id:GovPay-Tracciati-Batch}") String clusterId,
+			@Value(CLUSTER_ID) String clusterId,
 			ZoneId applicationZoneId) {
 		return new JobExecutionHelper(jobOperator, jobConcurrencyService, clusterId, applicationZoneId);
 	}

@@ -8,7 +8,7 @@
 # 3. Esecuzione script SQL se il database non è inizializzato
 #
 ##############################################################################
-set -x
+# Niente tracing (set -x): scriverebbe nei log la password del database.
 set -e
 
 # Configurazione con valori di default
@@ -72,8 +72,13 @@ if [ "${GOVPAY_TRACCIATI_LIVE_DB_CHECK_SKIP^^}" == "FALSE" ]; then
     DB_ALIVE=1
 
     while [ ${DB_ALIVE} -ne 0 ] && [ ${RETRY} -lt ${GOVPAY_TRACCIATI_LIVE_DB_CHECK_MAX_RETRY} ]; do
-        nc -w ${GOVPAY_TRACCIATI_LIVE_DB_CHECK_CONNECT_TIMEOUT} -z "${DB_HOST}" "${DB_PORT}"
-        DB_ALIVE=$?
+        # Con set -e un nc fallito fuori da un if chiuderebbe lo script al primo
+        # tentativo, senza riprovare.
+        if nc -w ${GOVPAY_TRACCIATI_LIVE_DB_CHECK_CONNECT_TIMEOUT} -z "${DB_HOST}" "${DB_PORT}"; then
+            DB_ALIVE=0
+        else
+            DB_ALIVE=$?
+        fi
         RETRY=$((RETRY + 1))
 
         if [ ${DB_ALIVE} -ne 0 ]; then
@@ -133,6 +138,10 @@ log_info "URL JDBC: ${JDBC_URL}"
 ##############################################################################
 
 SQLTOOL_RC_FILE="/tmp/sqltool_tracciati.rc"
+# Il file contiene la password del database: leggibile solo dall'utente e
+# cancellato all'uscita dello script.
+umask 077
+trap 'rm -f "${SQLTOOL_RC_FILE}"' EXIT
 cat > ${SQLTOOL_RC_FILE} <<EOSQLTOOL
 urlid tracciati_db
 url ${JDBC_URL}
@@ -143,6 +152,10 @@ transiso TRANSACTION_READ_COMMITTED
 charset UTF-8
 EOSQLTOOL
 
+# Comando SqlTool, usato sia dal readiness check sia dalla creazione dello
+# schema: va definito qui perche' il readiness check si puo' saltare.
+INVOCAZIONE_CLIENT="-Dfile.encoding=UTF-8 -cp ${GOVPAY_DS_JDBC_LIBS}/*:/opt/hsqldb-${HSQLDB_FULLVERSION}/hsqldb/lib/sqltool.jar org.hsqldb.cmdline.SqlTool --rcFile=${SQLTOOL_RC_FILE} "
+
 ##############################################################################
 # READINESS CHECK (Esistenza Tabella)
 ##############################################################################
@@ -150,7 +163,6 @@ EOSQLTOOL
 if [ "${GOVPAY_TRACCIATI_READY_DB_CHECK_SKIP^^}" == "FALSE" ]; then
     log_info "Esecuzione readiness check (tabella: ${GOVPAY_TRACCIATI_DB_CHECK_TABLE})..."
 
-    # Costruzione query di verifica in base al tipo di database
     # Costruzione query di verifica in base al tipo di database
     case "${GOVPAY_DB_TYPE}" in
         postgresql)
@@ -166,8 +178,6 @@ if [ "${GOVPAY_TRACCIATI_READY_DB_CHECK_SKIP^^}" == "FALSE" ]; then
 
     RETRY=0
     TABLE_EXISTS=-1
-
-    INVOCAZIONE_CLIENT="-Dfile.encoding=UTF-8 -cp ${GOVPAY_DS_JDBC_LIBS}/*:/opt/hsqldb-${HSQLDB_FULLVERSION}/hsqldb/lib/sqltool.jar org.hsqldb.cmdline.SqlTool --rcFile=${SQLTOOL_RC_FILE} "
 
     while [ ${TABLE_EXISTS} -lt 0 ] && [ ${RETRY} -lt ${GOVPAY_TRACCIATI_READY_DB_CHECK_MAX_RETRY} ]; do
         TABLE_COUNT=$(java ${INVOCAZIONE_CLIENT} \
@@ -208,22 +218,34 @@ log_info "Inizializzazione database in corso..."
 SQL_DIR="${GOVPAY_DB_TYPE}"
 [ "${GOVPAY_DB_TYPE}" == "mariadb" ] && SQL_DIR="mysql"
 
+# Schema dei metadati Spring Batch: file ufficiale della libreria, estratto in
+# fase di packaging in /opt/sql/spring-batch e mai modificato. Ha un file per
+# vendor, mariadb compreso, quindi qui si usa GOVPAY_DB_TYPE e non SQL_DIR.
+BATCH_SCHEMA="/opt/sql/spring-batch/schema-${GOVPAY_DB_TYPE}.sql"
+
+# Tracciabilita' di cosa contiene /opt/sql
+if [ -f /opt/sql/VERSION ]; then
+    log_info "Script SQL a bordo immagine:"
+    grep -v '^#' /opt/sql/VERSION | grep -v '^$' | while read -r riga; do log_info "  ${riga}"; done
+fi
+
 # Verifica esistenza script SQL
-SQL_FILE="/opt/sql/${SQL_DIR}/tabelle_batch-create.sql"
+SQL_FILE="${BATCH_SCHEMA}"
 if [ ! -f "${SQL_FILE}" ]; then
     log_error "Script SQL non trovato: ${SQL_FILE}"
     log_error "File disponibili in /opt/sql:"
     ls -la /opt/sql/ 2>/dev/null || echo "  directory /opt/sql non trovata"
-    if [ -d "/opt/sql/${SQL_DIR}" ]; then
-        log_error "File in /opt/sql/${SQL_DIR}:"
-        ls -la "/opt/sql/${SQL_DIR}/" 2>/dev/null
+    if [ -d /opt/sql/spring-batch ]; then
+        log_error "File in /opt/sql/spring-batch:"
+        ls -la /opt/sql/spring-batch/ 2>/dev/null
     fi
     exit 1
 fi
 
 # Copia script in posizione temporanea
 mkdir -p /tmp/tracciati_sql
-cp "/opt/sql/${SQL_DIR}"/*.sql /tmp/tracciati_sql/
+cp "/opt/sql/${SQL_DIR}"/*.sql /tmp/tracciati_sql/ 2>/dev/null || true
+cp "${BATCH_SCHEMA}" /tmp/tracciati_sql/
 log_info "Script SQL copiati in /tmp/tracciati_sql/"
 
 # Applica trasformazioni specifiche per vendor
@@ -245,21 +267,20 @@ esac
 # Esecuzione script SQL
 log_info "Esecuzione script SQL in corso..."
 
+# Con set -e un errore di SqlTool chiuderebbe lo script senza il messaggio
+# d'errore: l'exit code si raccoglie con ||.
+SQL_EXIT_CODE=0
 java ${INVOCAZIONE_CLIENT} \
     --continueOnErr=false \
-    tracciati_db <<EOSQL
+    tracciati_db <<EOSQL || SQL_EXIT_CODE=$?
 SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
 ${START_TRANSACTION}
-\i /tmp/tracciati_sql/tabelle_batch-create.sql
-\i /tmp/tracciati_sql/create-db.sql
+\i /tmp/tracciati_sql/schema-${GOVPAY_DB_TYPE}.sql
 COMMIT;
 EOSQL
 
-SQL_EXIT_CODE=$?
-
-# Pulizia
-#rm -rf /tmp/tracciati_sql
-#rm -f ${SQLTOOL_RC_FILE}
+# Pulizia (il file rc si cancella con il trap su EXIT)
+rm -rf /tmp/tracciati_sql
 
 if [ ${SQL_EXIT_CODE} -eq 0 ]; then
     log_info "========================================"

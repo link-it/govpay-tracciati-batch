@@ -1,3 +1,256 @@
+2026-11-09  Giuliano Pintori <pintori@link.it>
+
+	* [Release] Ramo 3.11.x: versione 1.1.0-SNAPSHOT
+	Gli sviluppi di GovPay 3.10 e 3.11 non sono compatibili e proseguono su
+	rami separati: 3.10.x resta a 1.0.0-SNAPSHOT, 3.11.x passa a
+	1.1.0-SNAPSHOT con il parent govpay-bom 2.1.0-SNAPSHOT e le librerie GovPay
+	della linea 3.11, cosi' le SNAPSHOT e le immagini -dev delle due linee
+	non si sovrascrivono.
+
+2026-11-03  Giuliano Pintori <pintori@link.it>
+
+	* [Batch] Cluster-id del nodo come default (govpay-common#35, #36).
+	Il cluster-id identifica il nodo e deve essere diverso su ogni nodo, ma
+	fuori dal container il default era la costante GovPay-Tracciati-Batch,
+	uguale su tutti i nodi: un'esecuzione in corso su un altro nodo era
+	attribuita al nodo corrente. Tolta la costante da application.properties:
+	se govpay.batch.cluster-id (o GOVPAY_BATCH_CLUSTER_ID) non e' impostata si
+	usa il nome dell'host (ClusterIdPredefinito di govpay-common). Nel container
+	non cambia nulla: l'entrypoint imposta l'indirizzo IP.
+	Negli eventi del GDE dei deploy fuori container il clusterId passa da
+	GovPay-Tracciati-Batch al nome dell'host.
+
+	* [Monitoraggio] Metriche di esecuzione dei batch (govpay-common#32).
+	Lo scrape /actuator/prometheus riporta le serie govpay_batch_* con il tag
+	nodo; il README le descrive, con l'esempio di configurazione di Prometheus e
+	l'indicazione di esporre actuator su una porta dedicata.
+
+	* [Config] Aggiunta govpay.batch.enabled (default true, nel container
+	GOVPAY_BATCH_ENABLED): con false lo scheduler interno non avvia il job,
+	mentre /run e il profilo cron restano disponibili
+	(link-it/govpay-common#44, che legge la proprieta').
+
+	* [Batch] Tolto il RunIdIncrementer dal job. Da Spring Batch 6
+	JobOperator.start() ignora i parametri passati a un job con incrementer e
+	avvia l'istanza successiva con i soli parametri dell'incrementer: si
+	perdevano ClusterID, TriggerType e CorrelationID impostati da
+	JobExecutionHelper, e all'avvio il log riportava l'ERROR "ha un
+	JobParametersIncrementer" (link-it/govpay-common#39). Ogni istanza resta
+	unica grazie al parametro When.
+
+2026-10-30  Giuliano Pintori <pintori@link.it>
+
+	* [Batch] Un tracciato che fa fallire l'elaborazione viene scartato.
+	FinalizzazioneTracciatoService.scarta() non era chiamato: il tracciato
+	restava in ELABORAZIONE o IN_STAMPA e veniva ripreso, e falliva di nuovo, a
+	ogni esecuzione, bloccando i successivi. Ora il listener del job, a
+	esecuzione FAILED, lo porta in SCARTATO come la procedura legacy.
+
+	* [Config] Tolte le proprieta' mai lette: govpay.batch.thread-pool-size
+	(il parallelismo si regola con caricamento-pool-size e stampe-pool-size,
+	ora in application.properties), enabled, skip-limit e max-retries.
+
+	* [Docker] GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON torna ad avere effetto:
+	l'entrypoint esporta SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING
+	invece di SCHEDULER_TRACCIATIJOB_FIXEDDELAYSTRING, mai letta. Un valore
+	impostato direttamente con SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING
+	ha la precedenza; un valore non numerico o zero blocca l'avvio. Senza
+	nessuna delle due vale il default dell'applicazione (60 secondi).
+
+	* [Docker] L'entrypoint non scrive piu' la password del database in
+	/tmp/entrypoint_debug.log: tolti set -x e la redirezione dello stderr,
+	anche della JVM, su quel file.
+
+	* [Docker] init_tracciati_db.sh: con set -e un nc fallito chiudeva lo script
+	al primo tentativo; con GOVPAY_TRACCIATI_READY_DB_CHECK_SKIP=TRUE la
+	creazione dello schema falliva; un errore di SqlTool chiudeva lo script
+	senza messaggio. Il file rc di SqlTool, con la password, e' cancellato
+	all'uscita.
+
+	* [Docker] Rimosse dal Dockerfile variabili mai lette; DOCKER.md riscritto,
+	versioni dei driver in jdbc-drivers/README.md allineate a govpay-bom.
+
+	* [Build] Il profilo war produce un war deployabile: packaging
+	${packaging.type}, layout WAR del plugin Spring Boot (ZIP resta per il jar),
+	l'applicazione estende SpringBootServletInitializer. Il war usa il
+	datasource JNDI dell'application server (spring.datasource.jndi-name).
+	Tolto l'override di postgresql.version, piu' vecchio di quello di govpay-bom.
+
+2026-09-28  Giuliano Pintori <pintori@link.it>
+
+	* [Logging] Transaction ID e Correlation ID nelle esecuzioni batch (BP-LOG-3).
+	Per un batch l'unita' di lavoro e' l'esecuzione del job, non una richiesta
+	HTTP: il contesto e' aperto da JobExecutionHelper a ogni avvio, con un
+	transaction id nuovo e il correlation id ereditato da chi ha lanciato il job.
+	Un avvio manuale via REST resta quindi correlato alla richiesta dell'operatore,
+	mentre gli avvii da cron o schedulati generano un correlation id proprio.
+	Il correlation id e' registrato come parametro di job non identificante, quindi
+	compare nei metadati Spring Batch e nell'API delle esecuzioni senza cambiare
+	l'identita' delle JobInstance esistenti.
+	Aggiunto logging.pattern.level con i due identificativi in ogni riga di log.
+
+	* [Logging] Livelli di log modificabili a runtime (BP-LOG-1).
+	I livelli sono letti dalla riga log_level della tabella configurazione,
+	condivisa con gli altri componenti: una modifica fatta dalla console raggiunge
+	anche questo batch entro l'intervallo di refresh. Nessun endpoint di gestione
+	locale, perche' il componente non ha Spring Security e actuator risponde sulla
+	porta applicativa: sarebbe scrittura non autenticata (BP-SEC-2).
+	management.endpoints.web.exposure.include passa a ${MANAGEMENT_ENDPOINTS:...}
+	senza cambiare il default; 'loggers' si abilita solo con una porta management
+	dedicata e segregata in rete.
+
+	* [Logging] Propagazione degli identificativi ai thread delle partizioni.
+	I task executor degli step partizionati sono decorati con MdcTaskDecorator:
+	senza decoratore i log prodotti in parallelo perderebbero transaction id e
+	correlation id dell'esecuzione che li ha generati.
+
+2026-09-17  Giuliano Pintori <pintori@link.it>
+
+	* [Batch]
+	I metadati di Spring Batch sono ora persistiti su database: l'auto-configuration
+	di govpay-common sostituisce il ResourcelessJobRepository di Spring Boot 4 con
+	uno JDBC sul DataSource dell'applicazione. Questo repository non richiede
+	modifiche di codice.
+
+	Diventano quindi effettivi la guardia anti-concorrenza fra nodi, la soglia
+	govpay.batch.stale-threshold-minutes, gli endpoint di console del batch
+	controller e lo svecchiamento in /opt/sql/cleanup. Le righe crescono a ogni
+	esecuzione, perche' ogni lancio e' una istanza distinta: e' lo svecchiamento
+	periodico a tenerle sotto controllo.
+
+	* [Test]
+	Nei profili di test il JobRepository JDBC resta disattivato
+	(govpay.batch.job-repository.jdbc.enabled=false). Le tre entity JPA dei
+	metadati batch di govpay-common e lo schema ufficiale di Spring Batch si
+	contendono le stesse tabelle: Hibernate con ddl-auto=create-drop le ricrea
+	senza le sequence che il JobRepository richiede, e caricare lo schema
+	ufficiale fa fallire l'avvio del contesto con "Table BATCH_JOB_INSTANCE
+	already exists". In esercizio lo schema arriva dall'immagine e il repository
+	e' JDBC. Conseguenza dichiarata: le suite non coprono la configurazione di
+	produzione.
+2026-09-17  Giuliano Pintori <pintori@link.it>
+
+	* [DDL]
+	Lo svecchiamento dei metadati Spring Batch arriva ora da govpay-common,
+	scompattato dal profilo dist in /opt/sql/cleanup dell'immagine: cinque file
+	SQL, uno per dialetto, piu' spring-batch-cleanup.sh che li invoca.
+
+	A differenza di quello che c'era prima, la data di taglio e' un parametro:
+	"spring-batch-cleanup.sh -d 2026-01-01" cancella tutte le esecuzioni
+	anteriori a quella data. Con -n stampa il SQL senza eseguirlo. Non c'e'
+	filtro sullo stato, quindi rientrano anche le esecuzioni non terminate: va
+	eseguito a batch fermi.
+
+	Rimossi i 5 spring-batch-cleanup.sql per vendor che stavano qui: avevano la
+	retention di 90 giorni scritta dentro il file, da modificare a mano prima di
+	lanciarli, ed erano copie identiche replicate in sei repository. Lo stesso
+	comportamento si ottiene ora con -d e una data calcolata a piacere.
+
+	* [Build]
+	Il descrittore src/assembly/sql.xml include i file di svecchiamento estratti
+	da govpay-common in target/sql-govpay-common. Nessuna configurazione di
+	plugin in questo repository: sta tutta nella pluginManagement del bom.
+
+2026-09-15  Giuliano Pintori <pintori@link.it>
+
+	* [Dipendenze]
+	Allineata govpay-common da 2.0.1-SNAPSHOT a 2.0.4-SNAPSHOT, la versione su
+	cui stanno gli altri sei batch e console-api. Lo scarto era visibile nel
+	sql/VERSION a bordo dell'immagine, che il raccoglitore del core riporta
+	nell'intestazione dello script SQL composto: era l'unico componente
+	disallineato.
+
+	Il salto porta con se' la correzione del 2026-09-01 su
+	BatchJobExecutionParamEntity, dove la colonna identifying e' ora mappata con
+	@JdbcTypeCode(SqlTypes.CHAR): lo schema standard di Spring Batch la dichiara
+	CHAR(1) su tutti i vendor, e con spring.jpa.hibernate.ddl-auto=validate la
+	mappatura precedente faceva fallire l'avvio. Qui non si manifestava, perche'
+	nessun profilo di questo batch imposta validate, ma la mappatura corretta
+	vale comunque.
+
+	L'aggiornamento non e' stato indolore: AbstractBatchController di
+	govpay-common ha cambiato contratto fra le due versioni e BatchController non
+	compilava piu'. Adeguato su due punti:
+
+	  - il costruttore della superclasse richiede ora un EntityManager, che usa
+	    per le query Criteria sullo storico esecuzioni: aggiunto al costruttore e
+	    passato a super();
+	  - sono comparsi due metodi astratti, getDisplayName() e getDescription(),
+	    che alimentano l'endpoint /api/batch/info per un consumer che non conosce
+	    il nome tecnico del job. Implementati entrambi.
+
+	Verifica: mvn clean install verde, 34 test superati, compresi il caricamento
+	del contesto Spring e JobAssemblyIntegrationTest; mvn -Pjar,dist package
+	produce un sql.zip il cui VERSION riporta govpay-common=2.0.4-SNAPSHOT.
+
+2026-09-14  Giuliano Pintori <pintori@link.it>
+
+	* [Docker]
+	Rimossa da init_tracciati_db.sh l'esecuzione di /tmp/tracciati_sql/create-db.sql, un file
+	che non e' mai esistito in questo repository: era un residuo del template
+	condiviso fra i batch e faceva fallire l'inizializzazione del database.
+
+	Qui non serve alcun DDL applicativo: le entity JPA mappano tabelle del
+	database GovPay (tracciati, versamenti, stampe, operazioni), create da GovPay stesso. Il
+	container deve creare solo i metadati di Spring Batch.
+
+	Il difetto non era emerso perche' l'inizializzazione e' disattivata di default
+	e il job docker gira solo sui tag.
+
+	Verificato costruendo l'immagine e avviandola contro PostgreSQL 16:
+	l'inizializzazione completa e crea le 6 tabelle batch con le 3 sequence.
+2026-09-14  Giuliano Pintori <pintori@link.it>
+
+	* [DDL]
+	Gli schemi dei metadati Spring Batch non sono piu' mantenuti in questo
+	repository. Rimossi gli schemi tenuti a mano
+	(5 tabelle_batch-create.sql + 5 tabelle_batch-drop.sql): al loro posto il packaging estrae
+	da spring-batch-core, verbatim, gli schema-<vendor>.sql, gli
+	schema-drop-<vendor>.sql e l'albero migration/**, che finiscono in
+	/opt/sql/spring-batch. Lo schema segue cosi' in automatico la
+	${spring-batch.version} definita in govpay-bom, e la deriva fra i batch non e'
+	piu' possibile: questo repository era fermo alla sequence BATCH_JOB_SEQ, mentre
+	Spring Batch 6 si aspetta BATCH_JOB_INSTANCE_SEQ.
+
+	In /opt/sql/<vendor>/ restano solo gli script nostri.
+
+	Due conseguenze dell'adozione degli schemi upstream integrali:
+	- si perdono gli indici aggiuntivi su BATCH_JOB_INSTANCE, BATCH_JOB_EXECUTION e
+	  BATCH_STEP_EXECUTION: upstream li spedisce solo per Oracle e lascia la scelta
+	  all'utente;
+	- su SQL Server upstream usa NVARCHAR dove noi usavamo VARCHAR. Con
+	  spring.jpa.hibernate.ddl-auto=validate e le entity batch di govpay-common,
+	  SQLServerDialect si aspetta varchar salvo @Nationalized: su quel vendor la
+	  validazione fallirebbe su 14 colonne. Gli altri vendor non sono interessati.
+
+	* [Build]
+	Il profilo "dist", non attivo di default, arriva da govpay-bom insieme alla
+	configurazione di maven-dependency-plugin e maven-assembly-plugin: e' identico
+	per tutti i batch e non viene duplicato qui. Nel repository restano solo
+	src/assembly/sql.xml, che elenca cosa finisce nell'archivio, e
+	src/assembly/VERSION, che registra nell'immagine le versioni degli script.
+	Il risultato e' target/sql.zip.
+
+	* [CI]
+	Il job build passa -U -Pjar,dist e pubblica target/sql.zip fra gli artefatti.
+	Il job docker-dev scompatta quell'archivio nel build context invece di copiare
+	src/main/resources/sql, e il job release lo allega come asset al posto dello
+	step "Zip SQL files" che zippava i sorgenti. Dockerfile.github, che scarica
+	sql.zip dalla release, non cambia: un solo archivio alimenta immagine di
+	sviluppo, release e immagine di produzione.
+
+	-Pjar,dist e non -Pdist: Maven disattiva i profili activeByDefault non appena
+	si passa -P, e "jar" e' quello che porta i cinque driver JDBC in scope provided.
+	-U perche' il profilo arriva ora da uno SNAPSHOT del bom e la cache Maven della
+	CI, con updatePolicy "daily", potrebbe servirne una copia vecchia.
+
+	* [Docker]
+	init_tracciati_db.sh esegue lo schema batch da
+	/opt/sql/spring-batch/schema-${GOVPAY_DB_TYPE}.sql e logga il contenuto di
+	/opt/sql/VERSION all'avvio. MariaDB usa ora il proprio schema upstream invece
+	di quello MySQL. docker/build_image.sh scompatta target/sql.zip nel build
+	context, con avviso esplicito se manca.
+
 2026-09-08  Giuliano Pintori <pintori@link.it>
 
         * [Build]

@@ -23,6 +23,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
 
+import it.govpay.common.logging.MdcTaskDecorator;
+
 /**
  * Task executor per l'elaborazione parallela interna degli step, con concorrenza limitata
  * (bounded) e configurabile da properties: uno per il caricamento pendenze, uno per la stampa avvisi.
@@ -42,6 +44,10 @@ public class BatchTaskExecutorConfig {
 	public SimpleAsyncTaskExecutor caricamentoTaskExecutor() {
 		SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("tracciati-caricamento-");
 		executor.setConcurrencyLimit(this.batchProperties.getCaricamentoPoolSize());
+		// Propaga transaction id e correlation id ai thread delle partizioni
+		// (BP-LOG-3): senza decoratore i log paralleli perderebbero gli
+		// identificativi dell'esecuzione che li ha generati.
+		executor.setTaskDecorator(new MdcTaskDecorator());
 		return executor;
 	}
 
@@ -49,6 +55,10 @@ public class BatchTaskExecutorConfig {
 	public SimpleAsyncTaskExecutor stampeTaskExecutor() {
 		SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor("tracciati-stampe-");
 		executor.setConcurrencyLimit(this.batchProperties.getStampePoolSize());
+		// Propaga transaction id e correlation id ai thread delle partizioni
+		// (BP-LOG-3): senza decoratore i log paralleli perderebbero gli
+		// identificativi dell'esecuzione che li ha generati.
+		executor.setTaskDecorator(new MdcTaskDecorator());
 		return executor;
 	}
 }

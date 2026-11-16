@@ -8,10 +8,9 @@
 
 set -e
 
-# Debug di esecuzione (come govpay-docker)
-exec 6<> /tmp/entrypoint_debug.log
-exec 2>&6
-set -x
+# Niente tracing (set -x) e nessuna redirezione dello stderr su file: il
+# tracing scriverebbe la password del database in chiaro e lo stderr della JVM
+# finirebbe in un file dentro il container invece che nei log del container.
 
 # Funzioni di logging
 log_info() { echo -e "\033[0;32m[INFO]\033[0m $(date '+%Y-%m-%d %H:%M:%S') - $1"; }
@@ -117,8 +116,7 @@ GOVPAY_TRACCIATI_MAX_POOL=${GOVPAY_TRACCIATI_MAX_POOL:-10}
 
 if [ "${GOVPAY_TRACCIATI_POP_DB_SKIP:-TRUE}" != "TRUE" ] && [ -n "${GOVPAY_DB_TYPE}" ]; then
     log_info "Esecuzione script di inizializzazione database..."
-    /usr/local/bin/init_tracciati_db.sh
-    if [ $? -ne 0 ]; then
+    if ! /usr/local/bin/init_tracciati_db.sh; then
         log_error "Inizializzazione database fallita"
         exit 1
     fi
@@ -154,14 +152,30 @@ case "${GOVPAY_TRACCIATI_BATCH_USA_CRON,,}" in
         log_info "Modalità deployment: SCHEDULER INTERNO (auto-schedulato)"
         SERVER_PORT=${SERVER_PORT:-10001}
 
-        # Conversione intervallo da minuti a millisecondi (default: 120 minuti = 2 ore)
-        # NOTA: adeguare il nome della property al job reale del batch tracciati
-        # (scheduler.<nomeJob>.fixedDelayString) una volta definito nel codice applicativo.
-        INTERVALLO_MINUTI=${GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON:-120}
-        SCHEDULER_TRACCIATIJOB_FIXEDDELAYSTRING=$((INTERVALLO_MINUTI * 60 * 1000))
+        # Intervallo di elaborazioneTracciatiPendenzeJob (proprieta'
+        # scheduler.elaborazioneTracciatiPendenzeJob.fixedDelayString, in ms). Un valore
+        # impostato direttamente con SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING
+        # ha la precedenza; altrimenti, se e' impostata, si converte
+        # GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON da minuti a millisecondi. Senza nessuna
+        # delle due vale il default dell'applicazione (60000 ms): ogni esecuzione elabora
+        # un solo tracciato, quindi l'intervallo resta breve.
+        if [ -n "${SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING}" ]; then
+            [ -n "${GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON}" ] && log_warn "GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON ignorata: e' impostata SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING."
+            log_info "Porta HTTP: ${SERVER_PORT}, Intervallo scheduler: ${SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING}ms (da SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING)"
+        elif [ -n "${GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON}" ]; then
+            INTERVALLO_MINUTI=${GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON}
+            if ! [[ "${INTERVALLO_MINUTI}" =~ ^[0-9]+$ ]] || [ "$((10#${INTERVALLO_MINUTI}))" -eq 0 ]; then
+                log_error "GOVPAY_TRACCIATI_BATCH_INTERVALLO_CRON deve essere un numero intero di minuti maggiore di zero: ${INTERVALLO_MINUTI}"
+                exit 1
+            fi
+            SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING=$((10#${INTERVALLO_MINUTI} * 60 * 1000))
+            log_info "Porta HTTP: ${SERVER_PORT}, Intervallo scheduler: ${INTERVALLO_MINUTI} minuti (${SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING}ms)"
+        else
+            log_info "Porta HTTP: ${SERVER_PORT}, Intervallo scheduler: default dell'applicazione (60000ms)"
+        fi
 
-        export SERVER_PORT SCHEDULER_TRACCIATIJOB_FIXEDDELAYSTRING
-        log_info "Porta Actuator: ${SERVER_PORT}, Intervallo scheduler: ${INTERVALLO_MINUTI} minuti (${SCHEDULER_TRACCIATIJOB_FIXEDDELAYSTRING}ms)"
+        export SERVER_PORT
+        [ -n "${SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING}" ] && export SCHEDULER_ELABORAZIONETRACCIATIPENDENZEJOB_FIXEDDELAYSTRING
         ;;
 esac
 

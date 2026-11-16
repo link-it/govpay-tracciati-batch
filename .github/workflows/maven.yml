@@ -2,11 +2,11 @@ name: Java CI with Maven
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "3.10.x", "3.11.x" ]
     tags:
       - '*'
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "3.10.x", "3.11.x" ]
 
 permissions:
   contents: write
@@ -94,14 +94,20 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-owasp-v${{ steps.owasp.outputs.version }}-
 
+    # -U: il progetto dipende da due SNAPSHOT in movimento (govpay-bom, che
+    # porta il profilo dist, e govpay-common). La updatePolicy di
+    # central-snapshots e' quella di default, "daily", e setup-java ripristina
+    # ~/.m2 dalla cache: senza -U una build puo' riusare uno snapshot vecchio
+    # della stessa giornata e, nel caso del bom, "-Pdist" resterebbe inerte con
+    # un solo warning, producendo un'immagine senza schemi.
     - name: Build with Maven
-      run: mvn clean install -Dspring.profiles.active=test -Duser.timezone=Europe/Rome -DnvdApiKey=$NVD_API_KEY -DossIndexUsername=$OSS_INDEX_USER -DossIndexPassword=$OSS_INDEX_PASSWORD -DdataDirectory=.dependency-check/data -Dowasp.format=ALL -Dowasp.output.dir=./dependency-check-report $NOUPDATE_FLAG
+      run: mvn clean install -U -Pjar,dist -Dspring.profiles.active=test -Duser.timezone=Europe/Rome -DnvdApiKey=$NVD_API_KEY -DossIndexUsername=$OSS_INDEX_USER -DossIndexPassword=$OSS_INDEX_PASSWORD -DdataDirectory=.dependency-check/data $NOUPDATE_FLAG
       env:
         NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         OSS_INDEX_USER: ${{ vars.OSS_INDEX_USER }}
         OSS_INDEX_PASSWORD: ${{ secrets.OSS_INDEX_PASSWORD }}
         # Se la cache è esatta (stessa giornata) skippa l'update NVD
-        NOUPDATE_FLAG: ${{ steps.owasp-cache.outputs.cache-hit == 'true' && '-DautoUpdate=false' || '' }}
+        NOUPDATE_FLAG: ${{ steps.owasp-cache.outputs.cache-hit == 'true' && '-Dowasp.autoUpdate=false' || '' }}
 
     - name: Show JaCoCo report location and Zip JaCoCo HTML report
       run: |
@@ -118,7 +124,7 @@ jobs:
         mvn dependency:copy-dependencies -DoutputDirectory=target/dependency
 
     - name: SonarCloud Scan
-      uses: SonarSource/sonarqube-scan-action@v5
+      uses: SonarSource/sonarqube-scan-action@v8
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: https://sonarcloud.io
@@ -154,6 +160,7 @@ jobs:
         name: govpay-tracciati-batch
         path: |
           target/govpay-tracciati-batch.jar
+          target/sql.zip
           target/site/jacoco/jacoco.xml
           target/jacoco-html-report.zip
           target/dependency-check-report.html
@@ -161,7 +168,7 @@ jobs:
 
   # ── OSV Scan (reusable workflow) ──────────────────────────────────────
   osv-scan:
-    if: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_type == 'tag' || vars.FORCE_OSV_JOB == 'true') }}
+    if: ${{ github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == '3.10.x' || github.ref_name == '3.11.x' || github.ref_type == 'tag' || vars.FORCE_OSV_JOB == 'true') }}
     permissions:
       actions: read
       contents: read
@@ -169,7 +176,7 @@ jobs:
     uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.3.5"
     with:
       matrix-property: ''
-      fail-on-vuln: ${{ github.ref_name == 'main' || github.ref_type == 'tag' }}
+      fail-on-vuln: ${{ github.ref_name == 'main' || github.ref_name == '3.10.x' || github.ref_name == '3.11.x' || github.ref_type == 'tag' }}
       results-file-name: osv-report.sarif
       scan-args: |-
         -r
@@ -184,8 +191,8 @@ jobs:
     if: >-
       vars.DISABLE_SBOM_JOB != 'true' &&
       (github.event_name == 'push' &&
-       (github.ref_name == 'main' || github.ref_type == 'tag' || vars.FORCE_SBOM_JOB == 'true'))
-    continue-on-error: ${{ vars.FORCE_SBOM_JOB == 'true' && github.ref_type != 'tag' && github.ref_name != 'main' }}
+       (github.ref_name == 'main' || github.ref_name == '3.10.x' || github.ref_name == '3.11.x' || github.ref_type == 'tag' || vars.FORCE_SBOM_JOB == 'true'))
+    continue-on-error: ${{ vars.FORCE_SBOM_JOB == 'true' && github.ref_type != 'tag' && github.ref_name != 'main' && github.ref_name != '3.10.x' && github.ref_name != '3.11.x' }}
     env:
       SBOM_CYCLONEDX_PLUGIN_VERSION: '2.9.1'   # ← adegua al valore reale
       SBOM_CYCLONEDX_SCHEMA_VERSION: '1.6'     # ← adegua al valore reale
@@ -234,7 +241,7 @@ jobs:
     if: >-
       vars.DISABLE_DTRACK_UPLOAD_JOB != 'true' &&
       (github.ref_type == 'tag' ||
-       github.ref_name == 'main' || github.ref_name == 'master' || github.ref_name == 'staging' ||
+       github.ref_name == 'main' || github.ref_name == '3.10.x' || github.ref_name == '3.11.x' || github.ref_name == 'master' || github.ref_name == 'staging' ||
        vars.FORCE_DTRACK_UPLOAD_JOB == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -242,7 +249,7 @@ jobs:
       contents: read
     # Come su GitLab, il fallimento blocca solo le esecuzioni su tag e sui
     # branch protetti; le esecuzioni forzate sono tolleranti.
-    continue-on-error: ${{ github.ref_type != 'tag' && github.ref_name != 'main' && github.ref_name != 'master' && github.ref_name != 'staging' }}
+    continue-on-error: ${{ github.ref_type != 'tag' && github.ref_name != 'main' && github.ref_name != '3.10.x' && github.ref_name != '3.11.x' && github.ref_name != 'master' && github.ref_name != 'staging' }}
 
     steps:
       - uses: actions/checkout@v6
@@ -283,7 +290,7 @@ jobs:
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             echo "latest=true" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.ref_name }}" = "master" ] || [ "${{ github.ref_name }}" = "staging" ]; then
+          elif [ "${{ github.ref_name }}" = "main" ] || [ "${{ github.ref_name }}" = "3.10.x" ] || [ "${{ github.ref_name }}" = "3.11.x" ] || [ "${{ github.ref_name }}" = "master" ] || [ "${{ github.ref_name }}" = "staging" ]; then
             echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             echo "latest=false" >> "$GITHUB_OUTPUT"
           else
@@ -306,16 +313,23 @@ jobs:
             "GovPay-Backend"
 
   # ── GitHub Release (solo tag) ────────────────────────────────────────
-  # ── Immagine Docker di sviluppo (solo push su main, solo SNAPSHOT) ────
+  # ── Immagine Docker di sviluppo (solo push su main e sui rami di linea, solo SNAPSHOT) ────
   # Serve a eseguire i test di integrazione prima di un rilascio: pubblica su
   # un repo separato (linkitaly/govpay-tracciati-batch-dev) cosi' una SNAPSHOT non finisce mai
   # nel repo delle immagini di produzione.
   # Usa Dockerfile.daFile, che prende il jar dal build context: Dockerfile.github
   # scarica il jar da una GitHub release, che per una SNAPSHOT non esiste.
+  # Sulle pull request l'immagine viene costruita e scansionata ma non
+  # pubblicata: il gate si vede gia' in revisione, prima del merge.
   docker-dev:
     runs-on: ubuntu-latest
     needs: build
-    if: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
+    if: ${{ (github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == '3.10.x' || github.ref_name == '3.11.x')) || github.event_name == 'pull_request' }}
+    # security-events: report SARIF della scansione dell'immagine.
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
 
     steps:
     - name: Skip (not a SNAPSHOT)
@@ -338,7 +352,7 @@ jobs:
       uses: docker/setup-buildx-action@v4
 
     - name: Login to Docker Hub
-      if: ${{ endsWith(needs.build.outputs.version, '-SNAPSHOT') }}
+      if: ${{ endsWith(needs.build.outputs.version, '-SNAPSHOT') && github.event_name == 'push' }}
       uses: docker/login-action@v4
       with:
         username: ${{ vars.DOCKERHUB_USERNAME }}
@@ -352,31 +366,47 @@ jobs:
         rm -rf buildcontext
         mkdir -p buildcontext/
         cp -fr commons buildcontext/
-        # Dockerfile.daFile fa "COPY sql /opt/sql". La sorgente e'
-        # src/main/resources/sql: la stessa che il job release zippa in sql.zip
-        # e che Dockerfile.github scarica dalla release. Il job docker di
-        # produzione non la copia perche' usa Dockerfile.github, che non ne ha
-        # bisogno: per questo il primo docker-dev falliva sul COPY.
-        if [ -d ../src/main/resources/sql ]; then
-          cp -fr ../src/main/resources/sql buildcontext/
-        else
-          echo "::warning::src/main/resources/sql assente: creo una directory vuota per soddisfare il COPY del Dockerfile."
-          mkdir -p buildcontext/sql
-        fi
+        # Dockerfile.daFile fa "COPY sql /opt/sql". Il contenuto arriva da
+        # target/sql.zip, prodotto dal profilo dist nel job build: lo schema dei
+        # metadati Spring Batch estratto da spring-batch-core piu' gli script
+        # delle tabelle applicative. E' lo stesso zip che la release pubblica
+        # come asset e che Dockerfile.github scarica.
+        unzip -q -o ../artifacts/sql.zip -d buildcontext/
         cp -f ../artifacts/govpay-tracciati-batch.jar buildcontext/
-        ls -lR buildcontext/ | head -40
+        # Solo diagnostica. Il "|| true" serve: con set -o pipefail, head che
+        # chiude la pipe manda SIGPIPE a ls e farebbe fallire lo step, cosa che
+        # ora accade sempre perche' sql.zip porta il listato oltre le 40 righe.
+        ls -lR buildcontext/ | head -40 || true
 
-    - name: Build and push development image
+    # L'immagine viene costruita senza pubblicarla, scansionata, e pubblicata
+    # solo se supera il gate (vedi .github/actions/image-scan). Su main la
+    # scansione fa da preavviso: un problema emerge qui, giorni prima del tag.
+    - name: Build development image
       if: ${{ endsWith(needs.build.outputs.version, '-SNAPSHOT') }}
       uses: docker/build-push-action@v6
       with:
         context: docker/buildcontext
         file: docker/govpay-tracciati/Dockerfile.daFile
-        push: true
+        push: false
+        load: true
+        pull: true
         build-args: |
           govpay_tracciati_fullversion=${{ needs.build.outputs.version }}
         tags: |
           linkitaly/govpay-tracciati-batch-dev:${{ needs.build.outputs.version }}
+
+    - name: Scan development image
+      if: ${{ endsWith(needs.build.outputs.version, '-SNAPSHOT') }}
+      uses: ./.github/actions/image-scan
+      with:
+        image: linkitaly/govpay-tracciati-batch-dev:${{ needs.build.outputs.version }}
+        gate: ${{ vars.IMAGE_SCAN_GATE || 'block' }}
+        report-name: image-scan-report-dev
+
+    - name: Push development image
+      if: ${{ endsWith(needs.build.outputs.version, '-SNAPSHOT') && github.event_name == 'push' }}
+      run: docker push "linkitaly/govpay-tracciati-batch-dev:${{ needs.build.outputs.version }}"
+
 
   release:
     runs-on: ubuntu-latest
@@ -447,13 +477,6 @@ jobs:
       run: |
         cp jar/govpay-tracciati-batch.jar jar/govpay-tracciati-batch-${{ github.ref_name }}.jar
 
-    - name: Zip SQL files
-      run: |
-        mkdir -p target
-        cd src/main/resources
-        zip -r ../../../target/sql.zip sql
-        cd ../../../
-
     - name: Assemble reports ZIP
       run: |
         mkdir -p reports/owasp reports/jacoco reports/osv reports/sbom
@@ -476,7 +499,7 @@ jobs:
       with:
         files: |
           jar/govpay-tracciati-batch-${{ github.ref_name }}.jar
-          target/sql.zip
+          jar/sql.zip
           release-reports-${{ github.ref_name }}.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
@@ -486,10 +509,37 @@ jobs:
     runs-on: ubuntu-latest
     needs: release
     if: startsWith(github.ref, 'refs/tags/')
+    # contents: write per allegare i report della scansione alla release;
+    # security-events: write per i report SARIF.
+    permissions:
+      contents: write
+      actions: read
+      security-events: write
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
+
+
+    # Jar e sql.zip dell'artifact sono gli stessi file allegati alla release:
+    # i loro sha256 sono quelli che il Dockerfile verifica dopo averli
+    # scaricati.
+    - name: Download jar from build job
+      uses: actions/download-artifact@v7
+      with:
+        name: govpay-tracciati-batch
+        path: artifacts/
+
+    - name: Checksum di jar e sql.zip
+      id: checksum
+      run: |
+        set -euo pipefail
+        SHA256="$(sha256sum artifacts/govpay-tracciati-batch.jar | cut -d' ' -f1)"
+        SQL_SHA256="$(sha256sum artifacts/sql.zip | cut -d' ' -f1)"
+        echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+        echo "sql_sha256=${SQL_SHA256}" >> "$GITHUB_OUTPUT"
+        echo "sha256 del jar: ${SHA256}"
+        echo "sha256 di sql.zip: ${SQL_SHA256}"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -511,14 +561,69 @@ jobs:
         mkdir -p buildcontext/
         cp -fr commons buildcontext/
 
-    - name: Build and push Docker image
+    # L'immagine viene costruita senza pubblicarla, scansionata, e pubblicata
+    # solo se supera il gate (vedi .github/actions/image-scan): un'immagine di
+    # release, una volta pubblicata, non viene piu' toccata.
+    - name: Build Docker image
       uses: docker/build-push-action@v6
       with:
         context: docker/buildcontext
         file: docker/govpay-tracciati/Dockerfile.github
-        push: true
+        push: false
+        load: true
+        pull: true
         build-args: |
           govpay_tracciati_fullversion=${{ steps.version.outputs.VERSION }}
+          govpay_tracciati_sha256=${{ steps.checksum.outputs.sha256 }}
+          govpay_tracciati_sql_sha256=${{ steps.checksum.outputs.sql_sha256 }}
         tags: |
           linkitaly/govpay-tracciati-batch:${{ steps.version.outputs.VERSION }}
           linkitaly/govpay-tracciati-batch:latest
+
+    - name: Scan Docker image
+      uses: ./.github/actions/image-scan
+      with:
+        image: linkitaly/govpay-tracciati-batch:${{ steps.version.outputs.VERSION }}
+        gate: ${{ vars.IMAGE_SCAN_GATE || 'block' }}
+        report-name: image-scan-report
+
+    # Anche con il gate fallito: i report spiegano perche' l'immagine non c'e'.
+    - name: Allega i report della scansione alla release
+      if: ${{ always() && hashFiles('image-scan-report/riepilogo.md') != '' }}
+      env:
+        GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      run: |
+        set -euo pipefail
+        ZIP="image-scan-report-${{ steps.version.outputs.VERSION }}.zip"
+        zip -r "${ZIP}" image-scan-report/
+        gh release upload "${{ steps.version.outputs.VERSION }}" "${ZIP}" --clobber
+
+    - name: Push Docker image
+      run: |
+        set -euo pipefail
+        docker push "linkitaly/govpay-tracciati-batch:${{ steps.version.outputs.VERSION }}"
+        docker push "linkitaly/govpay-tracciati-batch:latest"
+
+    # SBOM dell'immagine (sistema operativo, JRE e librerie) su
+    # Dependency-Track, accanto a quello Maven caricato dal job
+    # dependency-track-upload. Non blocca: l'immagine e' gia' pubblicata.
+    - name: Upload SBOM dell'immagine su Dependency-Track
+      if: ${{ vars.DISABLE_DTRACK_UPLOAD_JOB != 'true' }}
+      continue-on-error: true
+      env:
+        DTRACK_API_KEY: ${{ secrets.GOVPAY_DTRACK_API_KEY }}
+        DTRACK_PROJECT_NAME: govpay-tracciati-batch-image
+        DTRACK_VERSION: ${{ steps.version.outputs.VERSION }}
+        DTRACK_LATEST: 'true'
+      run: |
+        set -euo pipefail
+        if [ -z "${DTRACK_API_KEY}" ]; then
+          echo "::warning::secret GOVPAY_DTRACK_API_KEY non configurato: SBOM dell'immagine non caricato."
+          exit 0
+        fi
+        chmod +x script/sbom/upload-sbom-parent-required.sh
+        ./script/sbom/upload-sbom-parent-required.sh \
+          "${DTRACK_API_KEY}" \
+          image-scan-report/sbom-image.cdx.json \
+          "GovPay-Backend"
+

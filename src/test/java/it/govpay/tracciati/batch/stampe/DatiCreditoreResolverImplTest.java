@@ -22,6 +22,7 @@ package it.govpay.tracciati.batch.stampe;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -40,6 +41,7 @@ import it.govpay.tracciati.batch.entity.UnitaOperativa;
 import it.govpay.tracciati.batch.entity.Versamento;
 import it.govpay.tracciati.batch.repository.SingoloVersamentoRepository;
 import it.govpay.tracciati.batch.repository.UnitaOperativaRepository;
+import tools.jackson.databind.json.JsonMapper;
 
 /** Anagrafica dell'ente creditore sull'avviso: contatti, logo del dominio e logo di default. */
 class DatiCreditoreResolverImplTest {
@@ -133,5 +135,38 @@ class DatiCreditoreResolverImplTest {
 		DatiCreditore dati = this.resolver.risolvi(this.versamento);
 
 		assertArrayEquals("data:image/png;base64,SECONDO".getBytes(StandardCharsets.UTF_8), dati.logoSecondario());
+	}
+
+	@Test
+	void senzaDatoDelDominioPayOnWebsiteFalse() {
+		dominio();
+		unitaOperativaEnteCreditore(null);
+		when(this.dominioLogoRepository.findById(2L)).thenReturn(Optional.empty());
+		when(this.singoloVersamentoRepository.findByIdVersamento(1L)).thenReturn(List.of());
+
+		DatiCreditore dati = this.resolver.risolvi(this.versamento);
+
+		assertEquals(Boolean.FALSE, dati.creditor().getPayOnWebsite());
+		assertTrue(JsonMapper.builder().build().writeValueAsString(dati.creditor()).contains("\"pay_on_website\":false"));
+	}
+
+	@Test
+	void enteCheConsenteIlPagamentoSulSitoPayOnWebsiteTrue() {
+		dominio();
+		unitaOperativaEnteCreditore(null);
+		when(this.dominioLogoRepository.findById(2L)).thenReturn(Optional.empty());
+		when(this.singoloVersamentoRepository.findByIdVersamento(1L)).thenReturn(List.of());
+		DatiCreditoreResolverImpl conSito = new DatiCreditoreResolverImpl(this.dominioRepository,
+				this.dominioLogoRepository, this.unitaOperativaRepository, this.singoloVersamentoRepository, LOGO_DEFAULT) {
+			@Override
+			boolean consentePagamentoSulSito(DominioEntity dominio) {
+				return true;
+			}
+		};
+
+		DatiCreditore dati = conSito.risolvi(this.versamento);
+
+		assertEquals(Boolean.TRUE, dati.creditor().getPayOnWebsite());
+		assertTrue(JsonMapper.builder().build().writeValueAsString(dati.creditor()).contains("\"pay_on_website\":true"));
 	}
 }
