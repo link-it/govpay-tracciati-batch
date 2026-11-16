@@ -32,6 +32,7 @@ import it.govpay.tracciati.batch.dto.Soggetto;
 import it.govpay.tracciati.batch.dto.VocePendenza;
 import it.govpay.tracciati.batch.entity.SingoloVersamento;
 import it.govpay.tracciati.batch.entity.Versamento;
+import it.govpay.tracciati.batch.util.CausaleUtils;
 
 class PendenzaConverterTest {
 
@@ -51,7 +52,9 @@ class PendenzaConverterTest {
 		Versamento v = this.converter.toVersamento(p);
 
 		assertEquals("PEND-1", v.getCodVersamentoEnte());
-		assertEquals("Causale test", v.getCausaleVersamento());
+		// la causale viene memorizzata codificata, come fa GovPay
+		assertEquals("01 Q2F1c2FsZSB0ZXN0", v.getCausaleVersamento());
+		assertEquals("Causale test", CausaleUtils.decodeSimple(v.getCausaleVersamento()));
 		assertEquals(123.45, v.getImportoTotale(), 0.0001);
 		assertEquals("RSSMRA80A01H501U", v.getDebitoreIdentificativo());
 		assertEquals("Mario Rossi", v.getDebitoreAnagrafica());

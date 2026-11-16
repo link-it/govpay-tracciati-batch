@@ -31,6 +31,10 @@ public class EsitoCaricamento {
 	private StatoOperazione stato;
 	private String dettaglioEsito;
 	private Long idVersamento;
+	/**
+	 * Riferimento a {@code stampe} per {@code operazioni.id_stampa}: resta null, come nel legacy, da
+	 * quando l'avviso del tracciato non viene più salvato su DB ma solo nello ZIP (issue #262).
+	 */
 	private Long idStampa;
 	private String iuv;
 	private String numeroAvviso;

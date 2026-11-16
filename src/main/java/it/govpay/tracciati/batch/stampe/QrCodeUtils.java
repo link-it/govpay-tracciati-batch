@@ -19,25 +19,34 @@
  */
 package it.govpay.tracciati.batch.stampe;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Locale;
 
 /**
- * Composizione della stringa QR pagoPA (formato 002), port di
- * {@code IuvUtils.buildQrCode002} della procedura legacy (ramo con numero avviso):
+ * Composizione della stringa QR pagoPA (formato 002), port di {@code IuvUtils.buildQrCode002} della
+ * procedura legacy (ramo con numero avviso presente):
  * {@code PAGOPA|002|<numeroAvviso>|<codDominio>|<importoInCentesimi>}.
+ *
+ * <p>L'importo segue esattamente la formattazione legacy ({@code DecimalFormat("00.00")} con il
+ * punto rimosso): la parte intera è quindi zero-padded a due cifre, per cui 5,00 € diventa
+ * {@code 0500} e non {@code 500}.</p>
  */
 public final class QrCodeUtils {
+
+	private static final String PATTERN_IMPORTO = "00.00";
 
 	private QrCodeUtils() {
 		// utility
 	}
 
 	public static String buildQrCodePagoPa(String numeroAvviso, String codDominio, double importoTotale) {
-		String centesimi = BigDecimal.valueOf(importoTotale)
-				.movePointRight(2)
-				.setScale(0, RoundingMode.HALF_UP)
-				.toPlainString();
-		return "PAGOPA|002|" + numeroAvviso + "|" + codDominio + "|" + centesimi;
+		return "PAGOPA|002|" + numeroAvviso + "|" + codDominio + "|" + importoInCentesimi(importoTotale);
+	}
+
+	/** Importo in centesimi come lo scrive il legacy: {@code DecimalFormat("00.00")} senza il punto. */
+	static String importoInCentesimi(double importoTotale) {
+		DecimalFormat formatter = new DecimalFormat(PATTERN_IMPORTO, new DecimalFormatSymbols(Locale.ENGLISH));
+		return formatter.format(importoTotale).replace(".", "");
 	}
 }
