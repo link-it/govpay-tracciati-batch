@@ -1,3 +1,11 @@
+2026-11-16  Giuliano Pintori <pintori@link.it>
+
+	* [Release] Ramo 3.11.x: versione 1.0.0-SNAPSHOT
+	govpay-tracciati-batch appartiene solo alla linea 3.11: il ramo 3.10.x e'
+	stato cancellato e la 1.0.0 non esce piu' dalla linea 3.10. La prima
+	release del progetto arriva da questo ramo, quindi la 1.1.0-SNAPSHOT del
+	2026-11-09 torna 1.0.0-SNAPSHOT.
+
 2026-11-09  Giuliano Pintori <pintori@link.it>
 
 	* [Release] Ramo 3.11.x: versione 1.1.0-SNAPSHOT
